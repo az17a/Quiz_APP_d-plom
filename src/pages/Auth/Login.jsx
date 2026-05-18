@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth'
 import { doc, setDoc } from 'firebase/firestore'
 import { auth, db } from '../../firebase'
+import toast from 'react-hot-toast'
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true)
@@ -25,8 +26,10 @@ export default function Login() {
           createdAt: new Date().toISOString()
         })
       }
+      toast.success(isLogin ? 'Добро пожаловать!' : 'Аккаунт создан!')
       navigate('/dashboard')
     } catch (e) {
+      toast.error('Ошибка входа. Проверь email и пароль.')
       setError(e.message)
     }
     setLoading(false)

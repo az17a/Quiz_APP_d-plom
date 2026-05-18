@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { collection, addDoc } from 'firebase/firestore'
 import { auth, db } from '../../firebase'
+import toast from 'react-hot-toast'
 
 const TYPES = [
   { id: 'quiz', label: '🎮 Викторина', desc: 'Есть правильный ответ, очки, таймер' },
@@ -43,6 +44,7 @@ export default function CreateQuiz() {
       responses: []
     }
     await addDoc(collection(db, 'quizzes'), newQuiz)
+    toast.success('Опрос успешно создан!')
     navigate('/dashboard')
   }
 

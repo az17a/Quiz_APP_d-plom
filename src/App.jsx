@@ -7,6 +7,8 @@ import TakeQuiz from './pages/Quiz/TakeQuiz'
 import Analytics from './pages/Analytics/Analytics'
 import Leaderboard from './pages/Leaderboard'
 import Profile from './pages/Profile'
+import PrivateRoute from './components/PrivateRoute'
+import NotFound from './pages/NotFound'
 
 function App() {
   return (
@@ -14,12 +16,13 @@ function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/create" element={<CreateQuiz />} />
-        <Route path="/quiz/:id" element={<TakeQuiz />} />
-        <Route path="/analytics/:id" element={<Analytics />} />
-        <Route path="/leaderboard" element={<Leaderboard />} />
-        <Route path="/profile" element={<Profile />} />
+        <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+        <Route path="/create" element={<PrivateRoute><CreateQuiz /></PrivateRoute>} />
+        <Route path="/quiz/:id" element={<PrivateRoute><TakeQuiz /></PrivateRoute>} />
+        <Route path="/analytics/:id" element={<PrivateRoute><Analytics /></PrivateRoute>} />
+        <Route path="/leaderboard" element={<PrivateRoute><Leaderboard /></PrivateRoute>} />
+        <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
   )
