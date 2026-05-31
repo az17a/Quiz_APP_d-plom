@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
+
+const COLORS = ['#7c3aed', '#059669', '#f59e0b', '#ef4444', '#3b82f6', '#ec4899']
 
 export default function Analytics() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [quiz, setQuiz] = useState(null)
+  const [activeTab, setActiveTab] = useState('summary')
 
- useEffect(() => {
+  useEffect(() => {
     const loadQuiz = async () => {
       const { doc, getDoc } = await import('firebase/firestore')
       const { db } = await import('../../firebase')
@@ -16,165 +19,287 @@ export default function Analytics() {
     }
     loadQuiz()
   }, [id])
-  
-  if (!quiz) return <div className="flex items-center justify-center h-screen text-gray-400">Загрузка...</div>
+
+  if (!quiz) return (
+    <div style={{minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'Unbounded',system-ui,sans-serif", color:'#9ca3af'}}>
+      Загрузка...
+    </div>
+  )
 
   const responses = quiz.responses || []
-  const avgScore = responses.length ? Math.round(responses.reduce((a, r) => a + r.score, 0) / responses.length) : 0
-  const avgPercent = responses.length ? Math.round(responses.reduce((a, r) => {
-    const correct = r.answers.filter(a => a.isCorrect).length
+  const totalResponses = responses.length
+  const avgScore = totalResponses ? Math.round(responses.reduce((a, r) => a + r.score, 0) / totalResponses) : 0
+  const avgPercent = totalResponses ? Math.round(responses.reduce((a, r) => {
+    const correct = r.answers?.filter(a => a.isCorrect).length || 0
     return a + (correct / quiz.questions.length * 100)
-  }, 0) / responses.length) : 0
+  }, 0) / totalResponses) : 0
+  const maxScore = totalResponses ? Math.max(...responses.map(r => r.score)) : 0
+  const correctTotal = responses.reduce((a, r) => a + (r.answers?.filter(x => x.isCorrect).length || 0), 0)
+  const wrongTotal   = responses.reduce((a, r) => a + (r.answers?.filter(x => !x.isCorrect).length || 0), 0)
 
-  const COLORS = ['#7F77DD', '#1D9E75', '#EF9F27', '#D85A30']
+  const pieData = [
+    { name: 'Правильно', value: correctTotal },
+    { name: 'Неправильно', value: wrongTotal },
+  ]
+
+  const scoreDistribution = [
+    { range: '0-20%',  count: responses.filter(r => { const p = r.answers?.filter(a=>a.isCorrect).length/quiz.questions.length*100; return p < 20 }).length },
+    { range: '20-40%', count: responses.filter(r => { const p = r.answers?.filter(a=>a.isCorrect).length/quiz.questions.length*100; return p >= 20 && p < 40 }).length },
+    { range: '40-60%', count: responses.filter(r => { const p = r.answers?.filter(a=>a.isCorrect).length/quiz.questions.length*100; return p >= 40 && p < 60 }).length },
+    { range: '60-80%', count: responses.filter(r => { const p = r.answers?.filter(a=>a.isCorrect).length/quiz.questions.length*100; return p >= 60 && p < 80 }).length },
+    { range: '80-100%',count: responses.filter(r => { const p = r.answers?.filter(a=>a.isCorrect).length/quiz.questions.length*100; return p >= 80 }).length },
+  ]
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/dashboard')} className="text-gray-400 hover:text-gray-600">← Назад</button>
-          <span className="font-bold text-gray-800">Аналитика: {quiz.title}</span>
+    <div style={{minHeight:'100vh', background:'#f8f7ff', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
+      <style>{`
+        .tab-btn { padding:10px 20px; border:none; border-radius:12px; font-size:12px; font-weight:700; cursor:pointer; transition:all 0.15s; font-family:'Unbounded',system-ui,sans-serif; }
+        .tab-btn.active { background:#7c3aed; color:white; box-shadow:0 4px 12px rgba(124,58,237,0.25); }
+        .tab-btn:not(.active) { background:white; color:#6b7280; }
+        .tab-btn:not(.active):hover { background:#f5f3ff; color:#7c3aed; }
+        .stat-card { background:white; border-radius:18px; border:1.5px solid #e5e7eb; padding:20px; text-align:center; transition:transform 0.2s; }
+        .stat-card:hover { transform:translateY(-3px); }
+        .q-card { background:white; border-radius:18px; border:1.5px solid #e5e7eb; padding:24px; margin-bottom:16px; }
+        .progress-bar { height:8px; background:#f3f4f6; border-radius:8px; overflow:hidden; margin-top:4px; }
+        .progress-fill { height:100%; border-radius:8px; transition:width 0.5s ease; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+        .fade-in { animation:fadeIn 0.4s ease both; }
+      `}</style>
+
+      {/* Header */}
+      <div style={{background:'linear-gradient(135deg,#46178f,#5b21b6)', padding:'16px 32px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <div style={{display:'flex', alignItems:'center', gap:16}}>
+          <button onClick={() => navigate('/dashboard')}
+            style={{color:'rgba(255,255,255,0.7)', background:'transparent', border:'none', cursor:'pointer', fontSize:13, fontFamily:"'Unbounded',system-ui,sans-serif"}}>
+            ← Назад
+          </button>
+          <div>
+            <div style={{color:'white', fontWeight:800, fontSize:15}}>📊 Аналитика</div>
+            <div style={{color:'rgba(255,255,255,0.6)', fontSize:11, marginTop:2}}>{quiz.title}</div>
+          </div>
+        </div>
+        <div style={{color:'rgba(255,255,255,0.7)', fontSize:12}}>
+          {totalResponses} ответов
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 py-8">
+      <div style={{maxWidth:1000, margin:'0 auto', padding:'28px 24px'}}>
 
-        <div className="grid grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-2xl p-5 border border-gray-100">
-            <div className="text-2xl font-bold text-purple-600">{responses.length}</div>
-            <div className="text-sm text-gray-500 mt-1">Прошли опрос</div>
-          </div>
-          <div className="bg-white rounded-2xl p-5 border border-gray-100">
-            <div className="text-2xl font-bold text-teal-600">{avgScore}</div>
-            <div className="text-sm text-gray-500 mt-1">Средний балл</div>
-          </div>
-          <div className="bg-white rounded-2xl p-5 border border-gray-100">
-            <div className="text-2xl font-bold text-amber-500">{avgPercent}%</div>
-            <div className="text-sm text-gray-500 mt-1">Средний результат</div>
-          </div>
-          <div className="bg-white rounded-2xl p-5 border border-gray-100">
-            <div className="text-2xl font-bold text-gray-700">{quiz.questions.length}</div>
-            <div className="text-sm text-gray-500 mt-1">Вопросов</div>
-          </div>
+        {/* Tabs */}
+        <div style={{display:'flex', gap:8, marginBottom:24}}>
+          {[['summary','📈 Сводка'],['questions','❓ По вопросам'],['respondents','👥 Участники']].map(([id,label]) => (
+            <button key={id} className={`tab-btn ${activeTab===id?'active':''}`} onClick={() => setActiveTab(id)}>
+              {label}
+            </button>
+          ))}
         </div>
 
-        <div className="grid grid-cols-2 gap-6 mb-6">
-          <div className="bg-white rounded-2xl p-6 border border-gray-100">
-            <h2 className="font-bold text-gray-800 mb-4">Результаты по вопросам</h2>
-            {quiz.questions.length === 0 ? (
-              <p className="text-sm text-gray-400">Нет данных</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={quiz.questions.map((q, i) => ({
-                  name: `В${i+1}`,
-                  правильно: responses.filter(r => r.answers[i]?.isCorrect).length,
-                  неправильно: responses.filter(r => !r.answers[i]?.isCorrect).length,
-                }))}>
-                  <XAxis dataKey="name" tick={{fontSize: 12}} />
-                  <YAxis tick={{fontSize: 12}} />
-                  <Tooltip />
-                  <Bar dataKey="правильно" fill="#1D9E75" radius={[4,4,0,0]} />
-                  <Bar dataKey="неправильно" fill="#F09595" radius={[4,4,0,0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 border border-gray-100">
-            <h2 className="font-bold text-gray-800 mb-4">Распределение ответов</h2>
-            {responses.length === 0 ? (
-              <div className="text-center py-8 text-gray-400 text-sm">Ещё никто не прошёл опрос</div>
-            ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={[
-                    { name: 'Правильно', value: responses.reduce((a,r) => a + r.answers.filter(x => x.isCorrect).length, 0) },
-                    { name: 'Неправильно', value: responses.reduce((a,r) => a + r.answers.filter(x => !x.isCorrect).length, 0) },
-                  ]} cx="50%" cy="50%" outerRadius={80} dataKey="value" label>
-                    <Cell fill="#1D9E75" />
-                    <Cell fill="#F09595" />
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 mb-6">
-          <h2 className="font-bold text-gray-800 mb-4">Ответы участников</h2>
-          {responses.length === 0 ? (
-            <div className="text-center py-8 text-gray-400">
-              <div className="text-4xl mb-2">👥</div>
-              <p className="text-sm">Ещё никто не прошёл этот опрос</p>
+        {/* SUMMARY TAB */}
+        {activeTab === 'summary' && (
+          <div className="fade-in">
+            {/* Stats grid */}
+            <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:24}}>
+              {[
+                { label:'Ответов',       value: totalResponses, color:'#7c3aed', bg:'#f5f3ff', icon:'👥' },
+                { label:'Средний балл',  value: avgScore,       color:'#059669', bg:'#ecfdf5', icon:'⭐' },
+                { label:'Средний %',     value: `${avgPercent}%`, color:'#d97706', bg:'#fffbeb', icon:'📊' },
+                { label:'Лучший балл',   value: maxScore,       color:'#2563eb', bg:'#eff6ff', icon:'🏆' },
+              ].map((s,i) => (
+                <div key={i} className="stat-card" style={{background:s.bg, border:`1.5px solid ${s.bg}`}}>
+                  <div style={{fontSize:24, marginBottom:8}}>{s.icon}</div>
+                  <div style={{fontSize:24, fontWeight:900, color:s.color}}>{s.value}</div>
+                  <div style={{fontSize:11, color:'#6b7280', marginTop:4}}>{s.label}</div>
+                </div>
+              ))}
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left py-3 text-gray-500 font-medium">Участник</th>
-                    <th className="text-left py-3 text-gray-500 font-medium">Очки</th>
-                    <th className="text-left py-3 text-gray-500 font-medium">Результат</th>
-                    <th className="text-left py-3 text-gray-500 font-medium">Дата</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {responses.map((r, i) => {
-                    const correct = r.answers.filter(a => a.isCorrect).length
-                    const percent = Math.round(correct / quiz.questions.length * 100)
-                    return (
-                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="py-3 font-medium text-gray-800">{r.userName}</td>
-                        <td className="py-3 text-purple-600 font-medium">{r.score}</td>
-                        <td className="py-3">
-                          <span className={`px-2 py-1 rounded-lg text-xs font-medium ${percent >= 70 ? 'bg-teal-50 text-teal-700' : percent >= 40 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'}`}>
-                            {correct}/{quiz.questions.length} · {percent}%
-                          </span>
-                        </td>
-                        <td className="py-3 text-gray-400 text-xs">{new Date(r.date).toLocaleDateString()}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
 
-        <div className="bg-white rounded-2xl p-6 border border-gray-100">
-          <h2 className="font-bold text-gray-800 mb-4">Детали по вопросам</h2>
-          <div className="space-y-4">
+            {/* Charts */}
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:24}}>
+              {/* Score distribution */}
+              <div style={{background:'white', borderRadius:18, border:'1.5px solid #e5e7eb', padding:24}}>
+                <h3 style={{fontSize:13, fontWeight:800, color:'#111', marginBottom:16}}>Распределение результатов</h3>
+                {totalResponses === 0 ? (
+                  <div style={{textAlign:'center', padding:'40px 0', color:'#9ca3af', fontSize:12}}>Нет данных</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={scoreDistribution}>
+                      <XAxis dataKey="range" tick={{fontSize:10, fontFamily:'Unbounded'}} />
+                      <YAxis tick={{fontSize:10}} allowDecimals={false} />
+                      <Tooltip contentStyle={{fontFamily:'Unbounded', fontSize:12, borderRadius:8}} />
+                      <Bar dataKey="count" name="Участников" fill="#7c3aed" radius={[6,6,0,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              {/* Pie chart */}
+              <div style={{background:'white', borderRadius:18, border:'1.5px solid #e5e7eb', padding:24}}>
+                <h3 style={{fontSize:13, fontWeight:800, color:'#111', marginBottom:16}}>Правильные vs Неправильные</h3>
+                {totalResponses === 0 ? (
+                  <div style={{textAlign:'center', padding:'40px 0', color:'#9ca3af', fontSize:12}}>Нет данных</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie data={pieData} cx="50%" cy="50%" outerRadius={75} dataKey="value" label={({name,percent}) => `${name} ${Math.round(percent*100)}%`} labelLine={false}>
+                        <Cell fill="#059669" />
+                        <Cell fill="#ef4444" />
+                      </Pie>
+                      <Tooltip contentStyle={{fontFamily:'Unbounded', fontSize:12, borderRadius:8}} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+
+            {/* Questions correct rate */}
+            <div style={{background:'white', borderRadius:18, border:'1.5px solid #e5e7eb', padding:24}}>
+              <h3 style={{fontSize:13, fontWeight:800, color:'#111', marginBottom:16}}>Процент правильных по вопросам</h3>
+              {totalResponses === 0 ? (
+                <div style={{textAlign:'center', padding:'40px 0', color:'#9ca3af', fontSize:12}}>Нет данных</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={quiz.questions.map((q,i) => ({
+                    name: `В${i+1}`,
+                    '%': totalResponses ? Math.round(responses.filter(r => r.answers?.[i]?.isCorrect).length / totalResponses * 100) : 0,
+                  }))}>
+                    <XAxis dataKey="name" tick={{fontSize:11, fontFamily:'Unbounded'}} />
+                    <YAxis tick={{fontSize:11}} domain={[0,100]} unit="%" />
+                    <Tooltip formatter={v => `${v}%`} contentStyle={{fontFamily:'Unbounded', fontSize:12, borderRadius:8}} />
+                    <Bar dataKey="%" fill="#7c3aed" radius={[6,6,0,0]}>
+                      {quiz.questions.map((_, i) => {
+                        const pct = totalResponses ? Math.round(responses.filter(r => r.answers?.[i]?.isCorrect).length / totalResponses * 100) : 0
+                        return <Cell key={i} fill={pct >= 70 ? '#059669' : pct >= 40 ? '#f59e0b' : '#ef4444'} />
+                      })}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* QUESTIONS TAB */}
+        {activeTab === 'questions' && (
+          <div className="fade-in">
             {quiz.questions.map((q, i) => {
-              const totalAnswers = responses.length
+              const correctCount = responses.filter(r => r.answers?.[i]?.isCorrect).length
+              const correctPct   = totalResponses ? Math.round(correctCount / totalResponses * 100) : 0
+              const correctArr   = Array.isArray(q.correct) ? q.correct : [q.correct]
+
               return (
-                <div key={q.id} className="border border-gray-100 rounded-xl p-4">
-                  <p className="text-sm font-medium text-gray-800 mb-3">{i+1}. {q.text}</p>
-                  <div className="space-y-2">
-                    {q.options.filter(o => o).map((opt, j) => {
-                      const count = responses.filter(r => r.answers[i]?.selected === j).length
-                      const pct = totalAnswers ? Math.round(count / totalAnswers * 100) : 0
+                <div key={q.id} className="q-card">
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16}}>
+                    <div style={{flex:1}}>
+                      <span style={{fontSize:11, color:'#9ca3af', fontWeight:700}}>Вопрос {i+1}</span>
+                      <p style={{fontSize:14, fontWeight:800, color:'#111', margin:'6px 0 0'}}>{q.text}</p>
+                    </div>
+                    <div style={{textAlign:'center', marginLeft:16}}>
+                      <div style={{fontSize:22, fontWeight:900, color: correctPct>=70?'#059669':correctPct>=40?'#d97706':'#ef4444'}}>{correctPct}%</div>
+                      <div style={{fontSize:10, color:'#9ca3af'}}>правильно</div>
+                    </div>
+                  </div>
+
+                  {/* Options with bars */}
+                  <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                    {q.options?.filter(o=>o).map((opt, j) => {
+                      const selCount = responses.filter(r => {
+                        const sel = r.answers?.[i]?.selected
+                        return Array.isArray(sel) ? sel.includes(j) : sel === j
+                      }).length
+                      const pct = totalResponses ? Math.round(selCount / totalResponses * 100) : 0
+                      const isCorrect = correctArr.includes(j)
                       return (
                         <div key={j}>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className={j === q.correct ? 'text-teal-600 font-medium' : 'text-gray-500'}>
-                              {j === q.correct ? '✓ ' : ''}{opt}
+                          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4}}>
+                            <span style={{fontSize:12, fontWeight: isCorrect?700:400, color: isCorrect?'#059669':'#374151', display:'flex', alignItems:'center', gap:6}}>
+                              {isCorrect && <span style={{background:'#ecfdf5', color:'#059669', borderRadius:6, padding:'2px 8px', fontSize:10, fontWeight:800}}>✓</span>}
+                              {opt}
                             </span>
-                            <span className="text-gray-400">{count} ({pct}%)</span>
+                            <span style={{fontSize:11, color:'#6b7280', fontWeight:700}}>{selCount} чел. ({pct}%)</span>
                           </div>
-                          <div className="bg-gray-100 rounded-full h-1.5">
-                            <div className={`h-1.5 rounded-full ${j === q.correct ? 'bg-teal-500' : 'bg-gray-300'}`} style={{width: `${pct}%`}} />
+                          <div className="progress-bar">
+                            <div className="progress-fill" style={{
+                              width:`${pct}%`,
+                              background: isCorrect ? '#059669' : '#e5e7eb'
+                            }} />
                           </div>
                         </div>
                       )
                     })}
                   </div>
+
+                  <div style={{marginTop:12, padding:'8px 12px', background:'#f8f7ff', borderRadius:10, display:'flex', gap:16}}>
+                    <span style={{fontSize:11, color:'#7c3aed', fontWeight:700}}>✓ Правильно: {correctCount}</span>
+                    <span style={{fontSize:11, color:'#ef4444', fontWeight:700}}>✗ Неправильно: {totalResponses - correctCount}</span>
+                  </div>
                 </div>
               )
             })}
           </div>
-        </div>
+        )}
 
+        {/* RESPONDENTS TAB */}
+        {activeTab === 'respondents' && (
+          <div className="fade-in">
+            {totalResponses === 0 ? (
+              <div style={{textAlign:'center', padding:'80px 0', background:'white', borderRadius:18, border:'1.5px solid #e5e7eb'}}>
+                <div style={{fontSize:48, marginBottom:12}}>👥</div>
+                <p style={{fontSize:14, color:'#9ca3af', fontWeight:700}}>Ещё никто не прошёл опрос</p>
+              </div>
+            ) : (
+              <div style={{background:'white', borderRadius:18, border:'1.5px solid #e5e7eb', overflow:'hidden'}}>
+                <table style={{width:'100%', borderCollapse:'collapse'}}>
+                  <thead>
+                    <tr style={{background:'#f8f7ff', borderBottom:'1.5px solid #e5e7eb'}}>
+                      {['#','Участник','Очки','Правильно','Результат','Дата'].map(h => (
+                        <th key={h} style={{padding:'14px 16px', textAlign:'left', fontSize:11, color:'#6b7280', fontWeight:800}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...responses].sort((a,b) => b.score - a.score).map((r, i) => {
+                      const correct = r.answers?.filter(a => a.isCorrect).length || 0
+                      const percent = Math.round(correct / quiz.questions.length * 100)
+                      return (
+                        <tr key={i} style={{borderBottom:'1px solid #f3f4f6', transition:'background 0.15s'}}
+                          onMouseOver={e => e.currentTarget.style.background='#f8f7ff'}
+                          onMouseOut={e => e.currentTarget.style.background='white'}>
+                          <td style={{padding:'14px 16px', fontSize:12, color:'#9ca3af', fontWeight:700}}>{i+1}</td>
+                          <td style={{padding:'14px 16px'}}>
+                            <div style={{display:'flex', alignItems:'center', gap:10}}>
+                              <div style={{width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg,#7c3aed,#4f46e5)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:800, fontSize:12, flexShrink:0}}>
+                                {(r.userName||'?')[0].toUpperCase()}
+                              </div>
+                              <span style={{fontSize:12, fontWeight:700, color:'#111'}}>{r.userName}</span>
+                            </div>
+                          </td>
+                          <td style={{padding:'14px 16px'}}>
+                            <span style={{fontSize:13, fontWeight:900, color:'#7c3aed'}}>{r.score}</span>
+                          </td>
+                          <td style={{padding:'14px 16px', fontSize:12, color:'#374151', fontWeight:700}}>
+                            {correct}/{quiz.questions.length}
+                          </td>
+                          <td style={{padding:'14px 16px'}}>
+                            <span style={{
+                              padding:'4px 12px', borderRadius:8, fontSize:11, fontWeight:800,
+                              background: percent>=70?'#ecfdf5':percent>=40?'#fffbeb':'#fef2f2',
+                              color: percent>=70?'#059669':percent>=40?'#d97706':'#ef4444'
+                            }}>
+                              {percent}%
+                            </span>
+                          </td>
+                          <td style={{padding:'14px 16px', fontSize:11, color:'#9ca3af'}}>
+                            {new Date(r.date).toLocaleDateString('ru-RU')}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

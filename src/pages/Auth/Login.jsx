@@ -1,145 +1,154 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth'
-import { doc, setDoc } from 'firebase/firestore'
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth'
+import { doc, setDoc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../../firebase'
 import toast from 'react-hot-toast'
 
+const provider = new GoogleAuthProvider()
+
 export default function Login() {
-  const [isLogin, setIsLogin] = useState(true)
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'participant' })
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
-  const handleSubmit = async () => {
-    setError('')
+  const handleGoogle = async () => {
     setLoading(true)
     try {
-      if (isLogin) {
-        await signInWithEmailAndPassword(auth, form.email, form.password)
-      } else {
-        const res = await createUserWithEmailAndPassword(auth, form.email, form.password)
-        await updateProfile(res.user, { displayName: form.name })
-        await setDoc(doc(db, 'users', res.user.uid), {
-          name: form.name, email: form.email, role: form.role, score: 0,
+      const result = await signInWithPopup(auth, provider)
+      const user = result.user
+      const userRef = doc(db, 'users', user.uid)
+      const userSnap = await getDoc(userRef)
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          name: user.displayName || 'Пользователь',
+          email: user.email,
+          photo: user.photoURL || '',
+          role: 'participant',
+          score: 0,
           createdAt: new Date().toISOString()
         })
       }
-      toast.success(isLogin ? 'Добро пожаловать!' : 'Аккаунт создан!')
+      toast.success('Добро пожаловать, ' + (user.displayName?.split(' ')[0] || '') + '!')
       navigate('/dashboard')
     } catch (e) {
-      toast.error('Ошибка входа. Проверь email и пароль.')
-      setError(e.message)
+      if (e.code !== 'auth/popup-closed-by-user') {
+        toast.error('Ошибка входа через Google')
+      }
     }
     setLoading(false)
   }
 
   return (
-    <div className="min-h-screen flex">
-      
-      <div className="hidden lg:flex flex-1 bg-gradient-to-br from-purple-600 to-purple-800 items-center justify-center p-12">
-        <div className="text-white max-w-md">
-          <div className="text-5xl mb-6">🎯</div>
-          <h2 className="text-4xl font-bold mb-4">QuizApp</h2>
-          <p className="text-purple-200 text-lg leading-relaxed mb-8">
-            Создавай викторины, тесты и анкеты. Участники играют с геймификацией — очки, уровни, таблица лидеров.
-          </p>
-          <div className="space-y-4">
-            {[
-              { icon: '✏️', text: 'Создавай опросы за минуты' },
-              { icon: '🎮', text: 'Геймификация как в Kahoot' },
-              { icon: '📊', text: 'Подробная аналитика ответов' },
-              { icon: '🔒', text: 'Закрытый доступ по коду' },
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <span className="text-xl">{item.icon}</span>
-                <span className="text-purple-100">{item.text}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+    <div style={{minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'Unbounded',system-ui,sans-serif", position:'relative', overflow:'hidden'}}>
 
-      <div className="flex-1 flex items-center justify-center p-8 bg-white">
-        <div className="w-full max-w-md">
-          <div className="lg:hidden text-center mb-8">
-            <span className="text-4xl">🎯</span>
-            <h1 className="text-2xl font-bold text-gray-800 mt-2">QuizApp</h1>
-          </div>
+      <style>{`
+        @keyframes gradMove {
+          0%   { background-position: 0% 50%; }
+          50%  { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        @keyframes floatUp {
+          from { opacity:0; transform:translateY(24px); }
+          to   { opacity:1; transform:translateY(0); }
+        }
+        @keyframes pulse-ring {
+          0%,100% { box-shadow: 0 0 0 0 rgba(124,58,237,0.25); }
+          50%     { box-shadow: 0 0 0 12px rgba(124,58,237,0); }
+        }
+        @keyframes float-dot {
+          0%,100% { transform: translateY(0) scale(1); }
+          50%     { transform: translateY(-18px) scale(1.1); }
+        }
+        .login-bg {
+          position:fixed; inset:0; z-index:0;
+          background: linear-gradient(135deg, #faf5ff 0%, #ede9fe 35%, #dbeafe 65%, #f0fdf4 100%);
+          background-size: 300% 300%;
+          animation: gradMove 8s ease infinite;
+        }
+        .login-card {
+          position:relative; z-index:1;
+          background: rgba(255,255,255,0.75);
+          backdrop-filter: blur(24px);
+          border: 1px solid rgba(255,255,255,0.9);
+          border-radius: 28px;
+          padding: 52px 48px;
+          width: 100%;
+          max-width: 420px;
+          box-shadow: 0 24px 80px rgba(124,58,237,0.12), 0 4px 24px rgba(0,0,0,0.06);
+          text-align: center;
+          animation: floatUp 0.6s ease both;
+        }
+        .logo-wrap {
+          display:inline-flex; align-items:center; justify-content:center;
+          width:72px; height:72px; border-radius:20px;
+          background: linear-gradient(135deg, #7c3aed, #4f46e5);
+          font-size:36px; margin-bottom:24px;
+          box-shadow: 0 8px 32px rgba(124,58,237,0.35);
+          animation: pulse-ring 3s ease-in-out infinite;
+        }
+        .google-btn {
+          display:flex; align-items:center; justify-content:center; gap:12px;
+          width:100%; padding:16px 24px;
+          background:white; color:#1f2937;
+          border: 1.5px solid #e5e7eb;
+          border-radius:14px; font-size:15px; font-weight:600;
+          cursor:pointer; margin-top:32px;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .google-btn:hover {
+          background:#f9fafb;
+          border-color:#7c3aed;
+          box-shadow: 0 4px 20px rgba(124,58,237,0.15);
+          transform: translateY(-2px);
+        }
+        .google-btn:active { transform:scale(0.98); }
+        .google-btn:disabled { opacity:0.6; cursor:not-allowed; transform:none; }
 
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">
-            {isLogin ? 'Добро пожаловать!' : 'Создать аккаунт'}
-          </h2>
-          <p className="text-gray-500 text-sm mb-8">
-            {isLogin ? 'Войди в свой аккаунт' : 'Зарегистрируйся бесплатно'}
-          </p>
+        .dot {
+          position:fixed; border-radius:50%; opacity:0.18; z-index:0;
+        }
+        .dot-1 { width:320px; height:320px; background:#7c3aed; top:-80px; right:-80px; animation: float-dot 7s ease-in-out infinite; }
+        .dot-2 { width:220px; height:220px; background:#4f46e5; bottom:-60px; left:-60px; animation: float-dot 9s ease-in-out infinite 1s; }
+        .dot-3 { width:120px; height:120px; background:#10b981; top:40%; right:10%; animation: float-dot 6s ease-in-out infinite 0.5s; }
+      `}</style>
 
-          <div className="flex bg-gray-100 rounded-xl p-1 mb-6">
-            <button onClick={() => setIsLogin(true)}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${isLogin ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500'}`}>
-              Войти
-            </button>
-            <button onClick={() => setIsLogin(false)}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${!isLogin ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500'}`}>
-              Регистрация
-            </button>
-          </div>
+      {/* Background */}
+      <div className="login-bg" />
+      <div className="dot dot-1" />
+      <div className="dot dot-2" />
+      <div className="dot dot-3" />
 
-          {error && (
-            <div className="bg-red-50 border border-red-100 text-red-500 text-sm px-4 py-3 rounded-xl mb-4">
-              ⚠️ {error}
-            </div>
+      {/* Card */}
+      <div className="login-card">
+        <div className="logo-wrap">🎯</div>
+
+        <h1 style={{fontSize:28, fontWeight:800, color:'#111', margin:'0 0 10px', letterSpacing:'-0.5px'}}>
+          QuizApp
+        </h1>
+        <p style={{fontSize:15, color:'#6b7280', lineHeight:1.6, margin:0}}>
+          Создавай викторины и тесты.<br/>Играй, побеждай, анализируй.
+        </p>
+
+        <button className="google-btn" onClick={handleGoogle} disabled={loading}>
+          {loading ? (
+            <span style={{color:'#9ca3af'}}>⏳ Входим...</span>
+          ) : (
+            <>
+              <svg width="20" height="20" viewBox="0 0 24 24" style={{flexShrink:0}}>
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              Войти через Google
+            </>
           )}
+        </button>
 
-          <div className="space-y-4">
-            {!isLogin && (
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1.5 block">Ваше имя</label>
-                <input placeholder="Азиза"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-50 transition-all"
-                  onChange={e => setForm({...form, name: e.target.value})} />
-              </div>
-            )}
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Email</label>
-              <input placeholder="email@example.com" type="email"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-50 transition-all"
-                onChange={e => setForm({...form, email: e.target.value})} />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Пароль</label>
-              <input placeholder="Минимум 6 символов" type="password"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-50 transition-all"
-                onChange={e => setForm({...form, password: e.target.value})} />
-            </div>
-
-            {!isLogin && (
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-2 block">Я хочу:</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => setForm({...form, role: 'participant'})}
-                    className={`py-3 px-4 rounded-xl border text-sm font-medium transition-all text-left ${form.role === 'participant' ? 'border-teal-400 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-                    🎮 Проходить опросы
-                  </button>
-                  <button onClick={() => setForm({...form, role: 'creator'})}
-                    className={`py-3 px-4 rounded-xl border text-sm font-medium transition-all text-left ${form.role === 'creator' ? 'border-purple-400 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-                    ✏️ Создавать опросы
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <button onClick={handleSubmit} disabled={loading}
-              className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white py-3.5 rounded-xl text-sm font-medium transition-all mt-2">
-              {loading ? '⏳ Загрузка...' : isLogin ? 'Войти →' : 'Создать аккаунт →'}
-            </button>
-          </div>
-
-          <p className="text-center text-xs text-gray-400 mt-6">
-            Нажимая кнопку, вы соглашаетесь с условиями использования
-          </p>
-        </div>
+        <p style={{fontSize:12, color:'#d1d5db', marginTop:20}}>
+          Нажимая кнопку, вы соглашаетесь с условиями использования
+        </p>
       </div>
     </div>
   )

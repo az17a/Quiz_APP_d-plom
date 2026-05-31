@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { collection, addDoc } from 'firebase/firestore'
+import { useNavigate, useParams } from 'react-router-dom'
+import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { auth, db } from '../../firebase'
 import toast from 'react-hot-toast'
 
@@ -12,28 +12,35 @@ const TYPES = [
 ]
 
 const Q_TYPES = [
-  { id: 'single',   label: 'Один вариант' },
-  { id: 'multiple', label: 'Несколько вариантов' },
-  { id: 'open',     label: 'Открытый вопрос' },
-  { id: 'truefalse',label: 'Да / Нет' },
+  { id: 'single',    label: 'Один вариант' },
+  { id: 'multiple',  label: 'Несколько вариантов' },
+  { id: 'open',      label: 'Открытый вопрос' },
+  { id: 'truefalse', label: 'Да / Нет' },
 ]
 
-export default function CreateQuiz() {
+export default function EditQuiz() {
+  const { id } = useParams()
   const navigate = useNavigate()
-  const [user,   setUser]   = useState(null)
-  const [saving, setSaving] = useState(false)
-  const [quiz,   setQuiz]   = useState({
-    title: 'Новый опрос', description: '', type: 'quiz',
-    access: 'public', code: '', questions: [],
-    shuffle: false, multipleAttempts: false, showResults: true,
-  })
-  const [newQ, setNewQ] = useState({ text: '', options: ['', '', '', ''], correct: 0, qtype: 'single' })
+  const [user,    setUser]    = useState(null)
+  const [saving,  setSaving]  = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [quiz,    setQuiz]    = useState(null)
+  const [newQ,    setNewQ]    = useState({ text: '', options: ['', '', '', ''], correct: 0, qtype: 'single' })
   const [activeQType, setActiveQType] = useState('single')
 
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged(u => { if (!u) navigate('/login'); else setUser(u) })
+    const unsub = auth.onAuthStateChanged(async u => {
+      if (!u) { navigate('/login'); return }
+      setUser(u)
+      const snap = await getDoc(doc(db, 'quizzes', id))
+      if (!snap.exists()) { toast.error('Опрос не найден'); navigate('/dashboard'); return }
+      const data = snap.data()
+      if (data.authorId !== u.uid) { toast.error('Нет доступа'); navigate('/dashboard'); return }
+      setQuiz({ id: snap.id, ...data })
+      setLoading(false)
+    })
     return () => unsub()
-  }, [])
+  }, [id])
 
   const addQuestion = () => {
     if (!newQ.text.trim()) { toast.error('Введи текст вопроса'); return }
@@ -42,7 +49,7 @@ export default function CreateQuiz() {
     toast.success('Вопрос добавлен!')
   }
 
-  const removeQuestion = (id) => setQuiz(q => ({ ...q, questions: q.questions.filter(x => x.id !== id) }))
+  const removeQuestion = (qid) => setQuiz(q => ({ ...q, questions: q.questions.filter(x => x.id !== qid) }))
 
   const saveQuiz = async () => {
     if (!quiz.title.trim()) { toast.error('Введи название'); return }
@@ -50,47 +57,49 @@ export default function CreateQuiz() {
     if (quiz.access === 'code' && !quiz.code.trim()) { toast.error('Введи код доступа'); return }
     setSaving(true)
     try {
-      await addDoc(collection(db, 'quizzes'), {
-        ...quiz,
-        authorId: user.uid,
-        author: user.displayName || user.email,
-        createdAt: new Date().toISOString(),
-        responses: [],
+      await updateDoc(doc(db, 'quizzes', id), {
+        title: quiz.title,
+        description: quiz.description,
+        type: quiz.type,
+        access: quiz.access,
+        code: quiz.code,
+        questions: quiz.questions,
+        shuffle: quiz.shuffle,
+        multipleAttempts: quiz.multipleAttempts,
+        showResults: quiz.showResults,
       })
-      toast.success('Опрос опубликован!')
+      toast.success('Опрос сохранён!')
       navigate('/dashboard')
     } catch { toast.error('Ошибка сохранения') }
     setSaving(false)
   }
 
-  if (!user) return null
+  if (loading) return (
+    <div style={{minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'Unbounded',system-ui,sans-serif", color:'#9ca3af'}}>
+      Загрузка...
+    </div>
+  )
+
+  if (!quiz) return null
 
   return (
     <div style={{minHeight:'100vh', background:'#f8f7ff', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
       <style>{`
-        .inp { width:100%; border:1.5px solid #e5e7eb; border-radius:12px; padding:12px 16px; font-size:13px; outline:none; font-family:'Unbounded',system-ui,sans-serif; transition:border-color 0.2s; background:white; }
+        .inp { width:100%; border:1.5px solid #e5e7eb; border-radius:12px; padding:12px 16px; font-size:13px; outline:none; font-family:'Unbounded',system-ui,sans-serif; transition:border-color 0.2s; background:white; box-sizing:border-box; }
         .inp:focus { border-color:#7c3aed; box-shadow:0 0 0 3px rgba(124,58,237,0.08); }
         .qtype-btn { padding:8px 14px; border-radius:10px; border:1.5px solid #e5e7eb; font-size:12px; font-weight:700; cursor:pointer; transition:all 0.15s; background:white; font-family:'Unbounded',system-ui,sans-serif; }
         .qtype-btn:hover { border-color:#7c3aed; color:#7c3aed; }
         .qtype-btn.active { background:#7c3aed; color:white; border-color:#7c3aed; }
         .opt-row { display:flex; gap:10px; align-items:center; margin-bottom:8px; }
-        .correct-dot { width:22px; height:22px; border-radius:50%; border:2px solid #d1d5db; cursor:pointer; flex-shrink:0; transition:all 0.15s; }
+        .correct-dot { width:22px; height:22px; border-radius:50%; border:2px solid #d1d5db; cursor:pointer; flex-shrink:0; transition:all 0.15s; display:flex; align-items:center; justify-content:center; }
         .correct-dot.on { background:#7c3aed; border-color:#7c3aed; }
-        .q-card { background:white; border-radius:14px; border:1.5px solid #e5e7eb; padding:16px; margin-bottom:10px; }
+        .q-card { background:white; border-radius:14px; border:1.5px solid #e5e7eb; padding:16px; margin-bottom:10px; transition:border-color 0.15s; }
         .q-card:hover { border-color:#c4b5fd; }
         .toggle { display:flex; align-items:center; gap:10px; cursor:pointer; }
         .toggle input { accent-color:#7c3aed; width:16px; height:16px; cursor:pointer; }
         .btn-pub { width:100%; padding:15px; background:linear-gradient(135deg,#7c3aed,#4f46e5); color:white; border:none; border-radius:14px; font-size:14px; font-weight:800; cursor:pointer; font-family:'Unbounded',system-ui,sans-serif; transition:opacity 0.2s,transform 0.2s; }
         .btn-pub:hover { opacity:0.9; transform:translateY(-1px); }
         .btn-pub:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
-        @media (max-width:768px) {
-          .create-layout { grid-template-columns: 1fr !important; }
-          .right-panel { position:static !important; }
-          .create-pad { padding: 16px !important; }
-          .create-header { padding: 12px 16px !important; }
-          .create-header-title { font-size: 13px !important; }
-          .pub-btn-text { font-size: 12px !important; padding: 8px 14px !important; }
-        }
       `}</style>
 
       {/* Header */}
@@ -100,26 +109,25 @@ export default function CreateQuiz() {
             style={{color:'rgba(255,255,255,0.7)', background:'transparent', border:'none', cursor:'pointer', fontSize:13, fontFamily:"'Unbounded',system-ui,sans-serif"}}>
             ← Назад
           </button>
-          <span style={{color:'white', fontWeight:800, fontSize:15}}>Создание опроса</span>
+          <span style={{color:'white', fontWeight:800, fontSize:15}}>✏️ Редактирование опроса</span>
         </div>
         <div style={{display:'flex', alignItems:'center', gap:12}}>
           <span style={{color:'rgba(255,255,255,0.7)', fontSize:12}}>{quiz.questions.length} вопросов</span>
           <button onClick={saveQuiz} disabled={saving}
             style={{background:'#ffa602', color:'white', border:'none', borderRadius:12, padding:'10px 24px', fontWeight:800, fontSize:13, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
-            {saving ? '⏳ Сохраняем...' : '✓ Опубликовать'}
+            {saving ? '⏳ Сохраняем...' : '✓ Сохранить'}
           </button>
         </div>
       </div>
 
       {/* Two-column layout */}
-      <div className='create-layout create-pad' style={{display:'grid', gridTemplateColumns:'1fr 340px', gap:24, maxWidth:1100, margin:'0 auto', padding:'28px 24px'}}>
+      <div style={{display:'grid', gridTemplateColumns:'1fr 340px', gap:24, maxWidth:1100, margin:'0 auto', padding:'28px 24px'}}>
 
-        {/* LEFT — Settings + Questions list */}
+        {/* LEFT */}
         <div>
-          {/* Basic info card */}
           <div style={{background:'white', borderRadius:18, border:'1.5px solid #e5e7eb', padding:24, marginBottom:20}}>
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
-              <h2 style={{fontSize:15, fontWeight:800, color:'#111', margin:0}}>Опрос</h2>
+              <h2 style={{fontSize:15, fontWeight:800, color:'#111', margin:0}}>Основное</h2>
               <span style={{fontSize:11, color:'#9ca3af', background:'#f3f4f6', padding:'4px 12px', borderRadius:8}}>
                 {TYPES.find(t=>t.id===quiz.type)?.label}
               </span>
@@ -131,8 +139,8 @@ export default function CreateQuiz() {
             </div>
 
             <div style={{marginBottom:14}}>
-              <label style={{fontSize:11, color:'#6b7280', fontWeight:700, display:'block', marginBottom:6}}>Описание (необязательно)</label>
-              <textarea className="inp" value={quiz.description} onChange={e => setQuiz({...quiz, description:e.target.value})}
+              <label style={{fontSize:11, color:'#6b7280', fontWeight:700, display:'block', marginBottom:6}}>Описание</label>
+              <textarea className="inp" value={quiz.description || ''} onChange={e => setQuiz({...quiz, description:e.target.value})}
                 placeholder="Описание опроса..." rows={2} style={{resize:'none'}}/>
             </div>
 
@@ -150,26 +158,24 @@ export default function CreateQuiz() {
               </div>
             </div>
 
-            {/* Access */}
             <div style={{marginBottom:14}}>
               <label style={{fontSize:11, color:'#6b7280', fontWeight:700, display:'block', marginBottom:8}}>Доступ</label>
               <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
-                {[['public','🌍 Публичный','Виден всем'],['code','🔒 По коду','Только по коду']].map(([id,label,desc]) => (
-                  <button key={id} onClick={() => setQuiz({...quiz, access:id})}
-                    style={{padding:'10px 14px', borderRadius:12, border:`1.5px solid ${quiz.access===id?'#7c3aed':'#e5e7eb'}`,
-                      background: quiz.access===id ? '#f5f3ff' : 'white', textAlign:'left', cursor:'pointer', transition:'all 0.15s'}}>
-                    <div style={{fontSize:12, fontWeight:800, color: quiz.access===id?'#7c3aed':'#374151'}}>{label}</div>
+                {[['public','🌍 Публичный','Виден всем'],['code','🔒 По коду','Только по коду']].map(([aid,label,desc]) => (
+                  <button key={aid} onClick={() => setQuiz({...quiz, access:aid})}
+                    style={{padding:'10px 14px', borderRadius:12, border:`1.5px solid ${quiz.access===aid?'#7c3aed':'#e5e7eb'}`,
+                      background: quiz.access===aid ? '#f5f3ff' : 'white', textAlign:'left', cursor:'pointer', transition:'all 0.15s'}}>
+                    <div style={{fontSize:12, fontWeight:800, color: quiz.access===aid?'#7c3aed':'#374151'}}>{label}</div>
                     <div style={{fontSize:10, color:'#9ca3af', marginTop:2}}>{desc}</div>
                   </button>
                 ))}
               </div>
               {quiz.access === 'code' && (
-                <input className="inp" value={quiz.code} onChange={e => setQuiz({...quiz, code:e.target.value.toUpperCase()})}
-                  placeholder="Придумай код (напр. QUIZ42)" style={{marginTop:10, letterSpacing:3, textAlign:'center', fontWeight:800}}/>
+                <input className="inp" value={quiz.code || ''} onChange={e => setQuiz({...quiz, code:e.target.value.toUpperCase()})}
+                  placeholder="Код доступа (напр. QUIZ42)" style={{marginTop:10, letterSpacing:3, textAlign:'center', fontWeight:800}}/>
               )}
             </div>
 
-            {/* Options */}
             <div style={{borderTop:'1px solid #f3f4f6', paddingTop:14, display:'flex', flexDirection:'column', gap:10}}>
               {[
                 ['shuffle','Случайный порядок вопросов'],
@@ -177,7 +183,7 @@ export default function CreateQuiz() {
                 ['showResults','Показывать результаты после'],
               ].map(([key,label]) => (
                 <label key={key} className="toggle">
-                  <input type="checkbox" checked={quiz[key]} onChange={e => setQuiz({...quiz, [key]:e.target.checked})}/>
+                  <input type="checkbox" checked={!!quiz[key]} onChange={e => setQuiz({...quiz, [key]:e.target.checked})}/>
                   <span style={{fontSize:12, color:'#374151'}}>{label}</span>
                 </label>
               ))}
@@ -194,17 +200,23 @@ export default function CreateQuiz() {
                 <div key={q.id} className="q-card">
                   <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
                     <div style={{flex:1}}>
-                      <span style={{fontSize:11, color:'#9ca3af', fontWeight:700}}>Вопрос {i+1}</span>
+                      <span style={{fontSize:11, color:'#9ca3af', fontWeight:700}}>
+                        Вопрос {i+1} · {Q_TYPES.find(t=>t.id===q.qtype)?.label || 'Один вариант'}
+                      </span>
                       <p style={{fontSize:13, fontWeight:700, color:'#374151', margin:'4px 0 8px'}}>{q.text}</p>
                       <div style={{display:'flex', flexWrap:'wrap', gap:6}}>
-                        {q.options?.filter(o=>o).map((o, j) => (
-                          <span key={j} style={{fontSize:11, padding:'3px 10px', borderRadius:8,
-                            background: j===q.correct ? '#ede9fe' : '#f9fafb',
-                            color: j===q.correct ? '#7c3aed' : '#6b7280',
-                            fontWeight: j===q.correct ? 700 : 400}}>
-                            {j===q.correct ? '✓ ' : ''}{o}
-                          </span>
-                        ))}
+                        {q.options?.filter(o=>o).map((o, j) => {
+                          const correctArr = Array.isArray(q.correct) ? q.correct : [q.correct]
+                          const isRight = correctArr.includes(j)
+                          return (
+                            <span key={j} style={{fontSize:11, padding:'3px 10px', borderRadius:8,
+                              background: isRight ? '#ede9fe' : '#f9fafb',
+                              color: isRight ? '#7c3aed' : '#6b7280',
+                              fontWeight: isRight ? 700 : 400}}>
+                              {isRight ? '✓ ' : ''}{o}
+                            </span>
+                          )
+                        })}
                       </div>
                     </div>
                     <button onClick={() => removeQuestion(q.id)}
@@ -218,35 +230,30 @@ export default function CreateQuiz() {
           )}
         </div>
 
-        {/* RIGHT — Add question panel */}
-        <div className='right-panel' style={{position:'sticky', top:20, alignSelf:'start'}}>
+        {/* RIGHT — Add question */}
+        <div style={{position:'sticky', top:20, alignSelf:'start'}}>
           <div style={{background:'white', borderRadius:18, border:'1.5px solid #e5e7eb', padding:20, marginBottom:16}}>
             <h3 style={{fontSize:13, fontWeight:800, color:'#111', marginBottom:14}}>Добавить вопрос</h3>
 
-            {/* Question type buttons */}
             <div style={{display:'flex', flexWrap:'wrap', gap:6, marginBottom:16}}>
               {Q_TYPES.map(t => (
                 <button key={t.id} className={`qtype-btn ${activeQType===t.id?'active':''}`}
-                  onClick={() => setActiveQType(t.id)}>
+                  onClick={() => { setActiveQType(t.id); setNewQ({...newQ, correct: t.id==='multiple'?[]:0}) }}>
                   {t.label}
                 </button>
               ))}
             </div>
 
-            {/* Question text */}
             <div style={{marginBottom:12}}>
               <label style={{fontSize:11, color:'#6b7280', fontWeight:700, display:'block', marginBottom:6}}>Текст вопроса</label>
               <textarea className="inp" value={newQ.text} onChange={e => setNewQ({...newQ, text:e.target.value})}
                 placeholder="Введи вопрос..." rows={3} style={{resize:'none'}}/>
             </div>
 
-            {/* Options for single/multiple */}
             {(activeQType === 'single' || activeQType === 'multiple') && (
               <div style={{marginBottom:12}}>
                 <label style={{fontSize:11, color:'#6b7280', fontWeight:700, display:'block', marginBottom:8}}>
-                  {activeQType === 'single'
-                    ? 'Варианты ответов (выбери правильный)'
-                    : 'Варианты ответов (отметь все правильные ✓)'}
+                  {activeQType === 'single' ? 'Варианты (выбери правильный)' : 'Варианты (отметь все правильные ✓)'}
                 </label>
                 {newQ.options.map((opt, i) => {
                   const corrArr = Array.isArray(newQ.correct) ? newQ.correct : [newQ.correct]
@@ -254,7 +261,7 @@ export default function CreateQuiz() {
                   const handleClick = () => {
                     if (activeQType === 'multiple') {
                       const prev = Array.isArray(newQ.correct) ? newQ.correct : []
-                      const next = prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]
+                      const next = prev.includes(i) ? prev.filter(x=>x!==i) : [...prev, i]
                       setNewQ({...newQ, correct: next})
                     } else {
                       setNewQ({...newQ, correct: i})
@@ -262,11 +269,10 @@ export default function CreateQuiz() {
                   }
                   return (
                     <div key={i} className="opt-row">
-                      <div
-                        className={`correct-dot ${isOn ? 'on' : ''}`}
-                        style={{borderRadius: activeQType === 'multiple' ? '6px' : '50%', display:'flex', alignItems:'center', justifyContent:'center'}}
+                      <div className={`correct-dot ${isOn?'on':''}`}
+                        style={{borderRadius: activeQType==='multiple'?'6px':'50%'}}
                         onClick={handleClick}>
-                        {activeQType === 'multiple' && isOn && <span style={{color:'white',fontSize:11,fontWeight:900}}>✓</span>}
+                        {activeQType==='multiple' && isOn && <span style={{color:'white',fontSize:11,fontWeight:900}}>✓</span>}
                       </div>
                       <input className="inp" value={opt}
                         onChange={e => { const o=[...newQ.options]; o[i]=e.target.value; setNewQ({...newQ, options:o}) }}
@@ -274,22 +280,21 @@ export default function CreateQuiz() {
                     </div>
                   )
                 })}
-                {activeQType === 'multiple' && (
-                  <p style={{fontSize:11, color:'#9ca3af', marginTop:6}}>
-                    Правильных отмечено: {Array.isArray(newQ.correct) ? newQ.correct.length : 0}
+                {activeQType==='multiple' && (
+                  <p style={{fontSize:11,color:'#9ca3af',marginTop:6}}>
+                    Правильных: {Array.isArray(newQ.correct)?newQ.correct.length:0}
                   </p>
                 )}
               </div>
             )}
 
-            {/* True/False */}
             {activeQType === 'truefalse' && (
               <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12}}>
                 {['Да','Нет'].map((label, i) => (
                   <button key={i} onClick={() => setNewQ({...newQ, correct:i, options:['Да','Нет','','']})}
                     style={{padding:'12px', borderRadius:12, border:`2px solid ${newQ.correct===i?'#7c3aed':'#e5e7eb'}`,
-                      background: newQ.correct===i ? '#f5f3ff' : 'white', fontWeight:800, fontSize:13,
-                      color: newQ.correct===i ? '#7c3aed' : '#6b7280', cursor:'pointer'}}>
+                      background: newQ.correct===i?'#f5f3ff':'white', fontWeight:800, fontSize:13,
+                      color: newQ.correct===i?'#7c3aed':'#6b7280', cursor:'pointer'}}>
                     {label}
                   </button>
                 ))}
@@ -309,11 +314,11 @@ export default function CreateQuiz() {
             <h3 style={{fontSize:12, fontWeight:800, color:'#7c3aed', marginBottom:12}}>Итого</h3>
             <div style={{display:'flex', flexDirection:'column', gap:6}}>
               {[
-                ['📌', quiz.title || '—'],
-                ['🎯', TYPES.find(t=>t.id===quiz.type)?.label || '—'],
+                ['📌', quiz.title||'—'],
+                ['🎯', TYPES.find(t=>t.id===quiz.type)?.label||'—'],
                 ['❓', `${quiz.questions.length} вопросов`],
                 [quiz.access==='public'?'🌍':'🔒', quiz.access==='public'?'Публичный':`Код: ${quiz.code||'—'}`],
-              ].map(([icon, text], i) => (
+              ].map(([icon,text],i) => (
                 <div key={i} style={{display:'flex', gap:8, alignItems:'center'}}>
                   <span style={{fontSize:14}}>{icon}</span>
                   <span style={{fontSize:11, color:'#5b21b6', fontWeight:700}}>{text}</span>
@@ -323,7 +328,7 @@ export default function CreateQuiz() {
           </div>
 
           <button className="btn-pub" onClick={saveQuiz} disabled={saving}>
-            {saving ? '⏳ Публикуем...' : '✓ Опубликовать опрос'}
+            {saving ? '⏳ Сохраняем...' : '✓ Сохранить изменения'}
           </button>
         </div>
       </div>
