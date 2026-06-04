@@ -4,6 +4,8 @@ import { collection, addDoc } from 'firebase/firestore'
 import { auth, db } from '../../firebase'
 import toast from 'react-hot-toast'
 
+const EMOJIS = ['🎯','🎓','📚','🌍','🔬','💻','🎨','🏆','🚀','⚽','🎮','📝','💡','🌟','🔥','🧠','🎭','🎵','🌈','🦁','🐬','🌺','🍕','✈️','🏔️','🎪','🧪','📊','💼','🎲','🌙','❤️']
+
 const TYPES = [
   { id: 'quiz',   label: '🎮 Викторина', desc: 'Очки и таймер' },
   { id: 'test',   label: '📝 Тест',      desc: 'Проверка знаний' },
@@ -23,7 +25,7 @@ export default function CreateQuiz() {
   const [user,    setUser]    = useState(null)
   const [saving,  setSaving]  = useState(false)
   const [quiz,    setQuiz]    = useState({
-    title: 'Новый опрос', description: '', type: 'quiz',
+    title: 'Новый опрос', description: '', type: 'quiz', emoji: '🎯',
     access: 'public', code: '', questions: [],
     shuffle: false, multipleAttempts: false, showResults: true,
   })
@@ -140,6 +142,20 @@ export default function CreateQuiz() {
               <label style={{fontSize:11, color:'#6b7280', fontWeight:700, display:'block', marginBottom:6}}>Описание (необязательно)</label>
               <textarea className="inp" value={quiz.description} onChange={e => setQuiz({...quiz, description: e.target.value})}
                 placeholder="Описание опроса..." rows={2} style={{resize:'none'}}/>
+            </div>
+
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:11, color:'#6b7280', fontWeight:700, display:'block', marginBottom:8}}>Иконка опроса</label>
+              <div style={{display:'flex', flexWrap:'wrap', gap:6}}>
+                {EMOJIS.map(e => (
+                  <button key={e} onClick={() => setQuiz({...quiz, emoji:e})}
+                    style={{width:36, height:36, borderRadius:10, border:`1.5px solid ${quiz.emoji===e?'#7c3aed':'#e5e7eb'}`,
+                      background: quiz.emoji===e?'#f5f3ff':'white', fontSize:18, cursor:'pointer', transition:'all 0.15s',
+                      display:'flex', alignItems:'center', justifyContent:'center'}}>
+                    {e}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div style={{marginBottom:12}}>
@@ -311,7 +327,7 @@ export default function CreateQuiz() {
             <h3 style={{fontSize:12, fontWeight:800, color:'#7c3aed', marginBottom:10}}>Итого</h3>
             <div style={{display:'flex', flexDirection:'column', gap:6}}>
               {[
-                ['📌', quiz.title || '—'],
+                [quiz.emoji || '📌', quiz.title || '—'],
                 ['🎯', TYPES.find(t => t.id === quiz.type)?.label || '—'],
                 ['❓', `${quiz.questions.length} вопросов`],
                 [quiz.access === 'public' ? '🌍' : '🔒', quiz.access === 'public' ? 'Публичный' : `Код: ${quiz.code || '—'}`],

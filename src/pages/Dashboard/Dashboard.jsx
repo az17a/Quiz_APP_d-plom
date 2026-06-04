@@ -196,7 +196,7 @@ export default function Dashboard() {
                   <div key={q.id} className="quiz-card" onClick={() => navigate(`/quiz/${q.id}`)}
                     style={{borderRadius:18, overflow:'hidden', boxShadow:'0 2px 10px rgba(0,0,0,0.08)', background:'white'}}>
                     <div style={{background:CARD_GRADIENTS[i % CARD_GRADIENTS.length], padding:'20px 16px', minHeight:110, display:'flex', flexDirection:'column', justifyContent:'space-between'}}>
-                      <span style={{fontSize:28}}>{TYPE_ICONS[q.type] || '❓'}</span>
+                      <span style={{fontSize:28}}>{q.emoji || TYPE_ICONS[q.type] || '❓'}</span>
                       <div style={{color:'white', fontWeight:700, fontSize:13, lineHeight:1.3}}>{q.title}</div>
                     </div>
                     <div style={{padding:'10px 14px'}}>
@@ -231,7 +231,7 @@ export default function Dashboard() {
                   <div key={q.id} className="quiz-card"
                     style={{borderRadius:18, overflow:'hidden', boxShadow:'0 2px 10px rgba(0,0,0,0.08)', background:'white'}}>
                     <div style={{background:CARD_GRADIENTS[i % CARD_GRADIENTS.length], padding:'18px 16px', display:'flex', alignItems:'center', gap:12}}>
-                      <span style={{fontSize:28}}>{TYPE_ICONS[q.type] || '❓'}</span>
+                      <span style={{fontSize:28}}>{q.emoji || TYPE_ICONS[q.type] || '❓'}</span>
                       <div>
                         <div style={{color:'white', fontWeight:700, fontSize:14}}>{q.title}</div>
                         <div style={{color:'rgba(255,255,255,0.75)', fontSize:11, marginTop:2}}>
