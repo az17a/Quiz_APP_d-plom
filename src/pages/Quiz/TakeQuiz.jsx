@@ -354,8 +354,7 @@ export default function TakeQuiz() {
 
           <button onClick={() => handleNext()}
             disabled={selected.length === 0 || !!flash}
-            className="take-next w-full bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 disabled:from-gray-200 disabled:to-gray-200 disabled:text-gray-400 text-white py-3.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-purple-100 disabled:shadow-none"
-            className="w-full bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 disabled:from-gray-200 disabled:to-gray-200 disabled:text-gray-400 text-white py-3.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-purple-100 disabled:shadow-none">
+            className="take-next w-full bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 disabled:from-gray-200 disabled:to-gray-200 disabled:text-gray-400 text-white py-3.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-purple-100 disabled:shadow-none">
             {current + 1 === quiz.questions.length ? '✓ Завершить' : 'Следующий вопрос →'}
           </button>
         </div>
