@@ -1,332 +1,376 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { collection, addDoc } from 'firebase/firestore'
-import { auth, db } from '../../firebase'
-import toast from 'react-hot-toast'
+import { useState, useEffect, useRef } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { auth } from '../../firebase'
 
-const TYPES = [
-  { id: 'quiz',   label: '🎮 Викторина', desc: 'Очки и таймер' },
-  { id: 'test',   label: '📝 Тест',      desc: 'Проверка знаний' },
-  { id: 'survey', label: '📊 Опрос',     desc: 'Сбор мнений' },
-  { id: 'work',   label: '💼 Рабочий',   desc: 'HR и корпоративные' },
-]
-
-const Q_TYPES = [
-  { id: 'single',   label: 'Один вариант' },
-  { id: 'multiple', label: 'Несколько вариантов' },
-  { id: 'open',     label: 'Открытый вопрос' },
-  { id: 'truefalse',label: 'Да / Нет' },
-]
-
-export default function CreateQuiz() {
-  const navigate = useNavigate()
-  const [user,   setUser]   = useState(null)
-  const [saving, setSaving] = useState(false)
-  const [quiz,   setQuiz]   = useState({
-    title: 'Новый опрос', description: '', type: 'quiz',
-    access: 'public', code: '', questions: [],
-    shuffle: false, multipleAttempts: false, showResults: true,
-  })
-  const [newQ, setNewQ] = useState({ text: '', options: ['', '', '', ''], correct: 0, qtype: 'single' })
-  const [activeQType, setActiveQType] = useState('single')
+// ── Confetti ──────────────────────────────────────────────────────────────────
+function Confetti({ active }) {
+  const canvasRef = useRef(null)
+  const animRef   = useRef(null)
+  const particles = useRef([])
 
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged(u => { if (!u) navigate('/login'); else setUser(u) })
-    return () => unsub()
-  }, [])
-
-  const addQuestion = () => {
-    if (!newQ.text.trim()) { toast.error('Введи текст вопроса'); return }
-    setQuiz(q => ({ ...q, questions: [...q.questions, { ...newQ, id: Date.now(), qtype: activeQType }] }))
-    setNewQ({ text: '', options: ['', '', '', ''], correct: 0, qtype: activeQType })
-    toast.success('Вопрос добавлен!')
-  }
-
-  const removeQuestion = (id) => setQuiz(q => ({ ...q, questions: q.questions.filter(x => x.id !== id) }))
-
-  const saveQuiz = async () => {
-    if (!quiz.title.trim()) { toast.error('Введи название'); return }
-    if (quiz.questions.length === 0) { toast.error('Добавь хотя бы один вопрос'); return }
-    if (quiz.access === 'code' && !quiz.code.trim()) { toast.error('Введи код доступа'); return }
-    setSaving(true)
-    try {
-      await addDoc(collection(db, 'quizzes'), {
-        ...quiz,
-        authorId: user.uid,
-        author: user.displayName || user.email,
-        createdAt: new Date().toISOString(),
-        responses: [],
+    if (!active) return
+    const canvas = canvasRef.current
+    const ctx    = canvas.getContext('2d')
+    canvas.width  = window.innerWidth
+    canvas.height = window.innerHeight
+    const COLORS  = ['#7c3aed','#a855f7','#06b6d4','#f59e0b','#10b981','#ef4444','#ec4899']
+    particles.current = Array.from({ length: 160 }, () => ({
+      x: Math.random() * canvas.width, y: -Math.random() * canvas.height,
+      w: 6 + Math.random() * 8, h: 10 + Math.random() * 10,
+      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      speed: 2 + Math.random() * 4, angle: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 0.2, drift: (Math.random() - 0.5) * 1.5,
+    }))
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      particles.current.forEach(p => {
+        p.y += p.speed; p.x += p.drift; p.angle += p.spin
+        ctx.save(); ctx.translate(p.x + p.w/2, p.y + p.h/2); ctx.rotate(p.angle)
+        ctx.fillStyle = p.color; ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h); ctx.restore()
       })
-      toast.success('Опрос опубликован!')
-      navigate('/dashboard')
-    } catch { toast.error('Ошибка сохранения') }
-    setSaving(false)
+      particles.current = particles.current.filter(p => p.y < canvas.height + 20)
+      if (particles.current.length > 0) animRef.current = requestAnimationFrame(draw)
+    }
+    animRef.current = requestAnimationFrame(draw)
+    return () => cancelAnimationFrame(animRef.current)
+  }, [active])
+
+  if (!active) return null
+  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-50" />
+}
+
+// ── Counter ───────────────────────────────────────────────────────────────────
+function Counter({ target, duration = 1200 }) {
+  const [val, setVal] = useState(0)
+  useEffect(() => {
+    let start = null
+    const step = ts => {
+      if (!start) start = ts
+      const p = Math.min((ts - start) / duration, 1)
+      setVal(Math.floor(p * target))
+      if (p < 1) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }, [target, duration])
+  return <>{val}</>
+}
+
+// ── Score calculation ─────────────────────────────────────────────────────────
+// Returns { earnedPoints, isCorrect, isPartial }
+function calcScore(q, selectedArr) {
+  const POINTS = 10
+
+  // Single / open / truefalse
+  if (!q.qtype || q.qtype === 'single' || q.qtype === 'truefalse' || q.qtype === 'open') {
+    const sel = Array.isArray(selectedArr) ? selectedArr[0] : selectedArr
+    const isCorrect = sel === q.correct
+    return { earnedPoints: isCorrect ? POINTS : 0, isCorrect, isPartial: false }
   }
 
-  if (!user) return null
+  // Multiple choice — partial scoring
+  if (q.qtype === 'multiple') {
+    const correctSet = Array.isArray(q.correct) ? q.correct : [q.correct]
+    const selected   = Array.isArray(selectedArr) ? selectedArr : []
+    const pointEach  = POINTS / correctSet.length
+
+    let earned = 0
+    selected.forEach(s => {
+      if (correctSet.includes(s)) earned += pointEach   // correct pick
+      else earned -= pointEach                           // wrong pick penalty
+    })
+    earned = Math.max(0, Math.round(earned))
+    const isCorrect = earned === POINTS
+    const isPartial = earned > 0 && earned < POINTS
+    return { earnedPoints: earned, isCorrect, isPartial }
+  }
+
+  return { earnedPoints: 0, isCorrect: false, isPartial: false }
+}
+
+// ── Result screen ─────────────────────────────────────────────────────────────
+function ResultScreen({ quiz, score, answers, onHome, onRetry }) {
+  const [show, setShow] = useState(false)
+  const total   = quiz.questions.length
+  const correct = answers.filter(a => a.isCorrect).length
+  const percent = Math.round((correct / total) * 100)
+
+  const grade = percent >= 90 ? { emoji:'🏆', label:'Отлично!',      bg:'from-amber-50 to-yellow-50' }
+              : percent >= 70 ? { emoji:'🎉', label:'Хорошо!',       bg:'from-purple-50 to-violet-50' }
+              : percent >= 40 ? { emoji:'👍', label:'Неплохо!',      bg:'from-teal-50 to-cyan-50' }
+              :                 { emoji:'📚', label:'Нужно учиться', bg:'from-rose-50 to-pink-50' }
+
+  useEffect(() => { setTimeout(() => setShow(true), 100) }, [])
 
   return (
-    <div style={{minHeight:'100vh', background:'#f8f7ff', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
-      <style>{`
-        .inp { width:100%; border:1.5px solid #e5e7eb; border-radius:12px; padding:12px 16px; font-size:13px; outline:none; font-family:'Unbounded',system-ui,sans-serif; transition:border-color 0.2s; background:white; }
-        .inp:focus { border-color:#7c3aed; box-shadow:0 0 0 3px rgba(124,58,237,0.08); }
-        .qtype-btn { padding:8px 14px; border-radius:10px; border:1.5px solid #e5e7eb; font-size:12px; font-weight:700; cursor:pointer; transition:all 0.15s; background:white; font-family:'Unbounded',system-ui,sans-serif; }
-        .qtype-btn:hover { border-color:#7c3aed; color:#7c3aed; }
-        .qtype-btn.active { background:#7c3aed; color:white; border-color:#7c3aed; }
-        .opt-row { display:flex; gap:10px; align-items:center; margin-bottom:8px; }
-        .correct-dot { width:22px; height:22px; border-radius:50%; border:2px solid #d1d5db; cursor:pointer; flex-shrink:0; transition:all 0.15s; }
-        .correct-dot.on { background:#7c3aed; border-color:#7c3aed; }
-        .q-card { background:white; border-radius:14px; border:1.5px solid #e5e7eb; padding:16px; margin-bottom:10px; }
-        .q-card:hover { border-color:#c4b5fd; }
-        .toggle { display:flex; align-items:center; gap:10px; cursor:pointer; }
-        .toggle input { accent-color:#7c3aed; width:16px; height:16px; cursor:pointer; }
-        .btn-pub { width:100%; padding:15px; background:linear-gradient(135deg,#7c3aed,#4f46e5); color:white; border:none; border-radius:14px; font-size:14px; font-weight:800; cursor:pointer; font-family:'Unbounded',system-ui,sans-serif; transition:opacity 0.2s,transform 0.2s; }
-        .btn-pub:hover { opacity:0.9; transform:translateY(-1px); }
-        .btn-pub:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
-        @media (max-width:768px) {
-          .create-layout { grid-template-columns: 1fr !important; }
-          .right-panel { position:static !important; }
-          .create-pad { padding: 16px !important; }
-          .create-header { padding: 12px 16px !important; }
-          .create-header-title { font-size: 13px !important; }
-          .pub-btn-text { font-size: 12px !important; padding: 8px 14px !important; }
-        }
-      `}</style>
+    <>
+      <Confetti active={percent >= 70} />
+      <div className={`min-h-screen bg-gradient-to-br ${grade.bg} flex items-center justify-center p-4`}>
+        <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden"
+          style={{ opacity: show?1:0, transform: show?'translateY(0) scale(1)':'translateY(40px) scale(0.95)', transition:'opacity 0.5s ease, transform 0.5s cubic-bezier(.34,1.56,.64,1)' }}>
+          <div className="bg-gradient-to-r from-purple-600 to-violet-600 px-8 pt-8 pb-6 text-center">
+            <div className="text-7xl mb-3" style={{ display:'inline-block', animation: show?'bounceIn 0.6s 0.4s both':'none' }}>
+              {grade.emoji}
+            </div>
+            <h2 className="text-2xl font-extrabold text-white mb-1">{grade.label}</h2>
+            <p className="text-purple-200 text-sm truncate">{quiz.title}</p>
+          </div>
 
-      {/* Header */}
-      <div style={{background:'linear-gradient(135deg,#46178f,#5b21b6)', padding:'16px 32px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-        <div style={{display:'flex', alignItems:'center', gap:16}}>
-          <button onClick={() => navigate('/dashboard')}
-            style={{color:'rgba(255,255,255,0.7)', background:'transparent', border:'none', cursor:'pointer', fontSize:13, fontFamily:"'Unbounded',system-ui,sans-serif"}}>
-            ← Назад
-          </button>
-          <span style={{color:'white', fontWeight:800, fontSize:15}}>Создание опроса</span>
-        </div>
-        <div style={{display:'flex', alignItems:'center', gap:12}}>
-          <span style={{color:'rgba(255,255,255,0.7)', fontSize:12}}>{quiz.questions.length} вопросов</span>
-          <button onClick={saveQuiz} disabled={saving}
-            style={{background:'#ffa602', color:'white', border:'none', borderRadius:12, padding:'10px 24px', fontWeight:800, fontSize:13, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
-            {saving ? '⏳ Сохраняем...' : '✓ Опубликовать'}
-          </button>
+          <div className="px-8 py-6">
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              {[
+                { label:'Очков',     value: score,   suffix:'',         color:'text-purple-600', bg:'bg-purple-50' },
+                { label:'Правильно', value: correct,  suffix:`/${total}`, color:'text-teal-600',   bg:'bg-teal-50'   },
+                { label:'Результат', value: percent,  suffix:'%',        color:'text-amber-500',  bg:'bg-amber-50'  },
+              ].map((s, i) => (
+                <div key={s.label} className={`${s.bg} rounded-2xl p-4 text-center`}
+                  style={{ opacity: show?1:0, transform: show?'translateY(0)':'translateY(20px)', transition:`opacity 0.4s ${0.3+i*0.1}s ease, transform 0.4s ${0.3+i*0.1}s ease` }}>
+                  <div className={`text-2xl font-extrabold ${s.color}`}>
+                    {show ? <Counter target={s.value} /> : 0}{s.suffix}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mb-6">
+              <div className="flex justify-between text-xs text-gray-400 mb-1">
+                <span>Прогресс</span><span>{percent}%</span>
+              </div>
+              <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-gradient-to-r from-purple-500 to-violet-500"
+                  style={{ width: show?`${percent}%`:'0%', transition:'width 1s 0.6s cubic-bezier(.4,0,.2,1)' }} />
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-40 overflow-y-auto mb-6 pr-1">
+              {answers.map((a, i) => (
+                <div key={i}
+                  className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm ${
+                    a.isCorrect ? 'bg-green-50 text-green-700' : a.isPartial ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'}`}
+                  style={{ opacity: show?1:0, transform: show?'translateX(0)':'translateX(-16px)', transition:`opacity 0.3s ${0.5+i*0.06}s ease, transform 0.3s ${0.5+i*0.06}s ease` }}>
+                  <span>{a.isCorrect ? '✓' : a.isPartial ? '½' : '✗'}</span>
+                  <span className="truncate">Вопрос {i + 1}</span>
+                  <span className="ml-auto text-xs font-bold shrink-0">+{a.earnedPoints} бал.</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={onRetry}
+                className="flex-1 border-2 border-purple-200 text-purple-600 hover:bg-purple-50 py-3 rounded-xl text-sm font-semibold transition-all">
+                🔄 Ещё раз
+              </button>
+              <button onClick={onHome}
+                className="flex-1 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white py-3 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-purple-200">
+                На главную
+              </button>
+            </div>
+          </div>
         </div>
       </div>
+      <style>{`@keyframes bounceIn{0%{transform:scale(0.3) rotate(-10deg);opacity:0}60%{transform:scale(1.2) rotate(5deg);opacity:1}80%{transform:scale(0.9) rotate(-3deg)}100%{transform:scale(1) rotate(0deg)}}`}</style>
+    </>
+  )
+}
 
-      {/* Two-column layout */}
-      <div className='create-layout create-pad' style={{display:'grid', gridTemplateColumns:'1fr 340px', gap:24, maxWidth:1100, margin:'0 auto', padding:'28px 24px'}}>
+// ── Main ──────────────────────────────────────────────────────────────────────
+export default function TakeQuiz() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const [quiz,      setQuiz]      = useState(null)
+  const [current,   setCurrent]   = useState(0)
+  const [selected,  setSelected]  = useState([])   // always array
+  const [answers,   setAnswers]   = useState([])
+  const [finished,  setFinished]  = useState(false)
+  const [score,     setScore]     = useState(0)
+  const [timer,     setTimer]     = useState(20)
+  const [flash,     setFlash]     = useState(null)
 
-        {/* LEFT — Settings + Questions list */}
-        <div>
-          {/* Basic info card */}
-          <div style={{background:'white', borderRadius:18, border:'1.5px solid #e5e7eb', padding:24, marginBottom:20}}>
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
-              <h2 style={{fontSize:15, fontWeight:800, color:'#111', margin:0}}>Опрос</h2>
-              <span style={{fontSize:11, color:'#9ca3af', background:'#f3f4f6', padding:'4px 12px', borderRadius:8}}>
-                {TYPES.find(t=>t.id===quiz.type)?.label}
-              </span>
-            </div>
+  useEffect(() => {
+    const loadQuiz = async () => {
+      const { doc, getDoc } = await import('firebase/firestore')
+      const { db }          = await import('../../firebase')
+      const snap = await getDoc(doc(db, 'quizzes', id))
+      if (snap.exists()) setQuiz({ id: snap.id, ...snap.data() })
+    }
+    loadQuiz()
+  }, [id])
 
-            <div style={{marginBottom:14}}>
-              <label style={{fontSize:11, color:'#6b7280', fontWeight:700, display:'block', marginBottom:6}}>Название</label>
-              <input className="inp" value={quiz.title} onChange={e => setQuiz({...quiz, title:e.target.value})} placeholder="Название опроса"/>
-            </div>
+  useEffect(() => {
+    if (!quiz || finished) return
+    setTimer(20)
+    const t = setInterval(() => {
+      setTimer(prev => { if (prev <= 1) { handleNext(true); return 20 } return prev - 1 })
+    }, 1000)
+    return () => clearInterval(t)
+  }, [current, quiz, finished])
 
-            <div style={{marginBottom:14}}>
-              <label style={{fontSize:11, color:'#6b7280', fontWeight:700, display:'block', marginBottom:6}}>Описание (необязательно)</label>
-              <textarea className="inp" value={quiz.description} onChange={e => setQuiz({...quiz, description:e.target.value})}
-                placeholder="Описание опроса..." rows={2} style={{resize:'none'}}/>
-            </div>
+  const isMultiple = () => quiz?.questions[current]?.qtype === 'multiple'
 
-            <div style={{marginBottom:14}}>
-              <label style={{fontSize:11, color:'#6b7280', fontWeight:700, display:'block', marginBottom:8}}>Тип опроса</label>
-              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
-                {TYPES.map(t => (
-                  <button key={t.id} onClick={() => setQuiz({...quiz, type:t.id})}
-                    style={{padding:'10px 14px', borderRadius:12, border:`1.5px solid ${quiz.type===t.id?'#7c3aed':'#e5e7eb'}`,
-                      background: quiz.type===t.id ? '#f5f3ff' : 'white', textAlign:'left', cursor:'pointer', transition:'all 0.15s'}}>
-                    <div style={{fontSize:12, fontWeight:800, color: quiz.type===t.id?'#7c3aed':'#374151'}}>{t.label}</div>
-                    <div style={{fontSize:10, color:'#9ca3af', marginTop:2}}>{t.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
+  const toggleOption = (i) => {
+    if (flash) return
+    if (isMultiple()) {
+      setSelected(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i])
+    } else {
+      setSelected([i])
+    }
+  }
 
-            {/* Access */}
-            <div style={{marginBottom:14}}>
-              <label style={{fontSize:11, color:'#6b7280', fontWeight:700, display:'block', marginBottom:8}}>Доступ</label>
-              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
-                {[['public','🌍 Публичный','Виден всем'],['code','🔒 По коду','Только по коду']].map(([id,label,desc]) => (
-                  <button key={id} onClick={() => setQuiz({...quiz, access:id})}
-                    style={{padding:'10px 14px', borderRadius:12, border:`1.5px solid ${quiz.access===id?'#7c3aed':'#e5e7eb'}`,
-                      background: quiz.access===id ? '#f5f3ff' : 'white', textAlign:'left', cursor:'pointer', transition:'all 0.15s'}}>
-                    <div style={{fontSize:12, fontWeight:800, color: quiz.access===id?'#7c3aed':'#374151'}}>{label}</div>
-                    <div style={{fontSize:10, color:'#9ca3af', marginTop:2}}>{desc}</div>
-                  </button>
-                ))}
-              </div>
-              {quiz.access === 'code' && (
-                <input className="inp" value={quiz.code} onChange={e => setQuiz({...quiz, code:e.target.value.toUpperCase()})}
-                  placeholder="Придумай код (напр. QUIZ42)" style={{marginTop:10, letterSpacing:3, textAlign:'center', fontWeight:800}}/>
+  const handleNext = (timeout = false) => {
+    const q = quiz.questions[current]
+    const sel = timeout ? [] : selected
+
+    const { earnedPoints, isCorrect, isPartial } = timeout
+      ? { earnedPoints: 0, isCorrect: false, isPartial: false }
+      : calcScore(q, sel)
+
+    const newAnswers = [...answers, {
+      questionId: q.id, selected: sel, correct: q.correct,
+      isCorrect, isPartial, earnedPoints
+    }]
+    setAnswers(newAnswers)
+    setScore(s => s + earnedPoints)
+
+    if (!timeout && sel.length > 0) setFlash(isCorrect ? 'correct' : isPartial ? 'partial' : 'wrong')
+
+    setTimeout(() => {
+      setFlash(null)
+      if (current + 1 >= quiz.questions.length) {
+        saveResult(newAnswers, score + earnedPoints)
+        setFinished(true)
+      } else {
+        setCurrent(c => c + 1)
+        setSelected([])
+      }
+    }, 400)
+  }
+
+  const saveResult = async (ans, finalScore) => {
+    const user = auth.currentUser
+    const { doc, updateDoc, arrayUnion } = await import('firebase/firestore')
+    const { db } = await import('../../firebase')
+    await updateDoc(doc(db, 'quizzes', id), {
+      responses: arrayUnion({
+        userId:   user?.uid || 'anonymous',
+        userName: user?.displayName || user?.email || 'Аноним',
+        answers:  ans, score: finalScore,
+        date:     new Date().toISOString(),
+      })
+    })
+  }
+
+  const handleRetry = () => {
+    setCurrent(0); setSelected([]); setAnswers([])
+    setFinished(false); setScore(0); setTimer(20); setFlash(null)
+  }
+
+  if (!quiz) return <div className="flex items-center justify-center h-screen text-gray-400">Загрузка...</div>
+
+  if (finished) return (
+    <ResultScreen quiz={quiz} score={score} answers={answers}
+      onHome={() => navigate('/dashboard')} onRetry={handleRetry} />
+  )
+
+  const q        = quiz.questions[current]
+  const progress = (current / quiz.questions.length) * 100
+  const timerPct = (timer / 20) * 100
+  const multiple = q.qtype === 'multiple'
+
+  const flashBg = flash === 'correct' ? 'bg-green-50'
+                : flash === 'partial' ? 'bg-amber-50'
+                : flash === 'wrong'   ? 'bg-red-50'
+                : 'bg-gray-50'
+
+  return (
+    <div className={`min-h-screen transition-colors duration-300 ${flashBg}`}>
+      {/* Header */}
+      <div className="bg-white border-b border-gray-100 px-6 py-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="take-header-inner flex justify-between items-center mb-3">
+            <div>
+              <span className="text-sm font-medium text-gray-600 truncate max-w-xs block">{quiz.title}</span>
+              {multiple && (
+                <span className="text-xs text-purple-500 font-semibold">Выбери все правильные варианты</span>
               )}
             </div>
-
-            {/* Options */}
-            <div style={{borderTop:'1px solid #f3f4f6', paddingTop:14, display:'flex', flexDirection:'column', gap:10}}>
-              {[
-                ['shuffle','Случайный порядок вопросов'],
-                ['multipleAttempts','Можно проходить несколько раз'],
-                ['showResults','Показывать результаты после'],
-              ].map(([key,label]) => (
-                <label key={key} className="toggle">
-                  <input type="checkbox" checked={quiz[key]} onChange={e => setQuiz({...quiz, [key]:e.target.checked})}/>
-                  <span style={{fontSize:12, color:'#374151'}}>{label}</span>
-                </label>
-              ))}
+            <div className="relative w-11 h-11">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                <circle cx="18" cy="18" r="15" fill="none" stroke="#f3f4f6" strokeWidth="3" />
+                <circle cx="18" cy="18" r="15" fill="none"
+                  stroke={timer <= 5 ? '#ef4444' : '#7c3aed'} strokeWidth="3"
+                  strokeDasharray="94.2" strokeDashoffset={94.2 - (timerPct / 100) * 94.2}
+                  style={{ transition:'stroke-dashoffset 0.9s linear, stroke 0.3s' }} />
+              </svg>
+              <span className={`absolute inset-0 flex items-center justify-center text-xs font-bold ${timer <= 5 ? 'text-red-600' : 'text-purple-700'}`}>
+                {timer}
+              </span>
             </div>
           </div>
-
-          {/* Questions list */}
-          {quiz.questions.length > 0 && (
-            <div style={{background:'white', borderRadius:18, border:'1.5px solid #e5e7eb', padding:20}}>
-              <h3 style={{fontSize:13, fontWeight:800, color:'#111', marginBottom:14}}>
-                Вопросы ({quiz.questions.length})
-              </h3>
-              {quiz.questions.map((q, i) => (
-                <div key={q.id} className="q-card">
-                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
-                    <div style={{flex:1}}>
-                      <span style={{fontSize:11, color:'#9ca3af', fontWeight:700}}>Вопрос {i+1}</span>
-                      <p style={{fontSize:13, fontWeight:700, color:'#374151', margin:'4px 0 8px'}}>{q.text}</p>
-                      <div style={{display:'flex', flexWrap:'wrap', gap:6}}>
-                        {q.options?.filter(o=>o).map((o, j) => (
-                          <span key={j} style={{fontSize:11, padding:'3px 10px', borderRadius:8,
-                            background: j===q.correct ? '#ede9fe' : '#f9fafb',
-                            color: j===q.correct ? '#7c3aed' : '#6b7280',
-                            fontWeight: j===q.correct ? 700 : 400}}>
-                            {j===q.correct ? '✓ ' : ''}{o}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <button onClick={() => removeQuestion(q.id)}
-                      style={{background:'#fee2e2', color:'#ef4444', border:'none', borderRadius:8, padding:'6px 10px', fontSize:11, cursor:'pointer', marginLeft:10, fontWeight:700}}>
-                      Удалить
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="bg-gray-100 rounded-full h-1.5">
+            <div className="bg-purple-500 h-1.5 rounded-full transition-all duration-500" style={{ width:`${progress}%` }} />
+          </div>
+          <div className="text-xs text-gray-400 mt-1">Вопрос {current + 1} из {quiz.questions.length}</div>
         </div>
+      </div>
 
-        {/* RIGHT — Add question panel */}
-        <div className='right-panel' style={{position:'sticky', top:20, alignSelf:'start'}}>
-          <div style={{background:'white', borderRadius:18, border:'1.5px solid #e5e7eb', padding:20, marginBottom:16}}>
-            <h3 style={{fontSize:13, fontWeight:800, color:'#111', marginBottom:14}}>Добавить вопрос</h3>
+      {/* Question */}
+      <div className="take-content max-w-2xl mx-auto px-6 py-8">
+        <div key={current} style={{ animation:'slideIn 0.35s cubic-bezier(.4,0,.2,1)' }}>
+          <h2 className="take-title text-xl font-bold text-gray-800 mb-6">{q.text}</h2>
 
-            {/* Question type buttons */}
-            <div style={{display:'flex', flexWrap:'wrap', gap:6, marginBottom:16}}>
-              {Q_TYPES.map(t => (
-                <button key={t.id} className={`qtype-btn ${activeQType===t.id?'active':''}`}
-                  onClick={() => setActiveQType(t.id)}>
-                  {t.label}
+          <div className="space-y-3 mb-8">
+            {q.options.filter(o => o).map((opt, i) => {
+              const isSelected = selected.includes(i)
+              return (
+                <button key={i} onClick={() => toggleOption(i)}
+                  className={`w-full text-left px-5 py-4 rounded-xl border-2 text-sm font-medium transition-all duration-200
+                    ${isSelected
+                      ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-md shadow-purple-100 scale-[1.01]'
+                      : 'border-gray-200 bg-white hover:border-purple-300 hover:bg-purple-50/40 text-gray-700'}`}>
+                  {/* Checkbox for multiple, letter badge for single */}
+                  {multiple ? (
+                    <span className={`inline-flex w-7 h-7 rounded-md items-center justify-center text-xs font-bold mr-3 border-2 transition-all
+                      ${isSelected ? 'bg-purple-500 border-purple-500 text-white' : 'border-gray-300 text-gray-400'}`}>
+                      {isSelected ? '✓' : ''}
+                    </span>
+                  ) : (
+                    <span className={`inline-flex w-7 h-7 rounded-lg items-center justify-center text-xs font-bold mr-3
+                      ${isSelected ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                      {['A','B','C','D'][i]}
+                    </span>
+                  )}
+                  {opt}
                 </button>
-              ))}
-            </div>
-
-            {/* Question text */}
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:11, color:'#6b7280', fontWeight:700, display:'block', marginBottom:6}}>Текст вопроса</label>
-              <textarea className="inp" value={newQ.text} onChange={e => setNewQ({...newQ, text:e.target.value})}
-                placeholder="Введи вопрос..." rows={3} style={{resize:'none'}}/>
-            </div>
-
-            {/* Options for single/multiple */}
-            {(activeQType === 'single' || activeQType === 'multiple') && (
-              <div style={{marginBottom:12}}>
-                <label style={{fontSize:11, color:'#6b7280', fontWeight:700, display:'block', marginBottom:8}}>
-                  {activeQType === 'single'
-                    ? 'Варианты ответов (выбери правильный)'
-                    : 'Варианты ответов (отметь все правильные ✓)'}
-                </label>
-                {newQ.options.map((opt, i) => {
-                  const corrArr = Array.isArray(newQ.correct) ? newQ.correct : [newQ.correct]
-                  const isOn = activeQType === 'multiple' ? corrArr.includes(i) : newQ.correct === i
-                  const handleClick = () => {
-                    if (activeQType === 'multiple') {
-                      const prev = Array.isArray(newQ.correct) ? newQ.correct : []
-                      const next = prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]
-                      setNewQ({...newQ, correct: next})
-                    } else {
-                      setNewQ({...newQ, correct: i})
-                    }
-                  }
-                  return (
-                    <div key={i} className="opt-row">
-                      <div
-                        className={`correct-dot ${isOn ? 'on' : ''}`}
-                        style={{borderRadius: activeQType === 'multiple' ? '6px' : '50%', display:'flex', alignItems:'center', justifyContent:'center'}}
-                        onClick={handleClick}>
-                        {activeQType === 'multiple' && isOn && <span style={{color:'white',fontSize:11,fontWeight:900}}>✓</span>}
-                      </div>
-                      <input className="inp" value={opt}
-                        onChange={e => { const o=[...newQ.options]; o[i]=e.target.value; setNewQ({...newQ, options:o}) }}
-                        placeholder={`Вариант ${i+1}`} style={{padding:'10px 14px', fontSize:12}}/>
-                    </div>
-                  )
-                })}
-                {activeQType === 'multiple' && (
-                  <p style={{fontSize:11, color:'#9ca3af', marginTop:6}}>
-                    Правильных отмечено: {Array.isArray(newQ.correct) ? newQ.correct.length : 0}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* True/False */}
-            {activeQType === 'truefalse' && (
-              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12}}>
-                {['Да','Нет'].map((label, i) => (
-                  <button key={i} onClick={() => setNewQ({...newQ, correct:i, options:['Да','Нет','','']})}
-                    style={{padding:'12px', borderRadius:12, border:`2px solid ${newQ.correct===i?'#7c3aed':'#e5e7eb'}`,
-                      background: newQ.correct===i ? '#f5f3ff' : 'white', fontWeight:800, fontSize:13,
-                      color: newQ.correct===i ? '#7c3aed' : '#6b7280', cursor:'pointer'}}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <button onClick={addQuestion}
-              style={{width:'100%', padding:'12px', background:'linear-gradient(135deg,#7c3aed,#4f46e5)', color:'white',
-                border:'none', borderRadius:12, fontSize:13, fontWeight:800, cursor:'pointer',
-                fontFamily:"'Unbounded',system-ui,sans-serif"}}>
-              + Добавить вопрос
-            </button>
+              )
+            })}
           </div>
 
-          {/* Summary */}
-          <div style={{background:'#f5f3ff', borderRadius:18, border:'1.5px solid #ddd6fe', padding:20, marginBottom:16}}>
-            <h3 style={{fontSize:12, fontWeight:800, color:'#7c3aed', marginBottom:12}}>Итого</h3>
-            <div style={{display:'flex', flexDirection:'column', gap:6}}>
-              {[
-                ['📌', quiz.title || '—'],
-                ['🎯', TYPES.find(t=>t.id===quiz.type)?.label || '—'],
-                ['❓', `${quiz.questions.length} вопросов`],
-                [quiz.access==='public'?'🌍':'🔒', quiz.access==='public'?'Публичный':`Код: ${quiz.code||'—'}`],
-              ].map(([icon, text], i) => (
-                <div key={i} style={{display:'flex', gap:8, alignItems:'center'}}>
-                  <span style={{fontSize:14}}>{icon}</span>
-                  <span style={{fontSize:11, color:'#5b21b6', fontWeight:700}}>{text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          {multiple && selected.length > 0 && (
+            <p className="text-xs text-purple-500 text-center mb-3">
+              Выбрано: {selected.length} вариант(а)
+            </p>
+          )}
 
-          <button className="btn-pub" onClick={saveQuiz} disabled={saving}>
-            {saving ? '⏳ Публикуем...' : '✓ Опубликовать опрос'}
+          <button onClick={() => handleNext()}
+            disabled={selected.length === 0 || !!flash}
+            className="take-next w-full bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 disabled:from-gray-200 disabled:to-gray-200 disabled:text-gray-400 text-white py-3.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-purple-100 disabled:shadow-none"
+            className="w-full bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 disabled:from-gray-200 disabled:to-gray-200 disabled:text-gray-400 text-white py-3.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-purple-100 disabled:shadow-none">
+            {current + 1 === quiz.questions.length ? '✓ Завершить' : 'Следующий вопрос →'}
           </button>
         </div>
       </div>
+
+      <style>{`
+        @keyframes slideIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:translateX(0)}}
+        @media(max-width:768px){
+          .take-header-inner{padding:12px 16px !important;}
+          .take-content{padding:16px !important;}
+          .take-title{font-size:17px !important;}
+          .take-opt{padding:14px 14px !important; font-size:13px !important;}
+          .take-next{font-size:13px !important; padding:14px !important;}
+        }
+      `}</style>
     </div>
   )
 }
