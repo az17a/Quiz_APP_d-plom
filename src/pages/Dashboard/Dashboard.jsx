@@ -17,13 +17,12 @@ const CARD_GRADIENTS = [
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [user,     setUser]     = useState(null)
-  const [quizzes,  setQuizzes]  = useState([])
-  const [code,     setCode]     = useState('')
-  const [search,   setSearch]   = useState('')
-  const [filter,   setFilter]   = useState('all')
-  const [tab,      setTab]      = useState('discover')
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [user,    setUser]    = useState(null)
+  const [quizzes, setQuizzes] = useState([])
+  const [code,    setCode]    = useState('')
+  const [search,  setSearch]  = useState('')
+  const [filter,  setFilter]  = useState('all')
+  const [tab,     setTab]     = useState('discover')
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async u => {
@@ -58,11 +57,11 @@ export default function Dashboard() {
     .filter(q => q.title.toLowerCase().includes(search.toLowerCase()))
 
   const avatar = user.photoURL
-    ? <img src={user.photoURL} style={{width:34,height:34,borderRadius:'50%',objectFit:'cover'}} alt=""/>
-    : <div style={{width:34,height:34,borderRadius:'50%',background:'linear-gradient(135deg,#7c3aed,#4f46e5)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:800,fontSize:13,flexShrink:0}}>{(user.displayName||user.email||'U')[0].toUpperCase()}</div>
+    ? <img src={user.photoURL} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover'}} alt=""/>
+    : <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#a78bfa,#7c3aed)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:800,fontSize:12,flexShrink:0}}>{(user.displayName||user.email||'U')[0].toUpperCase()}</div>
 
   return (
-    <div style={{minHeight:'100vh', background:'#f8f7ff', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
+    <div style={{minHeight:'100vh', background:'#f8f7ff', fontFamily:"'Unbounded',system-ui,sans-serif", paddingBottom:70}}>
       <style>{`
         .quiz-card { transition:transform 0.2s,box-shadow 0.2s; cursor:pointer; }
         .quiz-card:hover { transform:translateY(-4px); box-shadow:0 12px 32px rgba(124,58,237,0.15) !important; }
@@ -72,112 +71,78 @@ export default function Dashboard() {
         @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
         .fade-in { animation:fadeIn 0.35s ease both; }
 
-        /* Desktop: показываем десктоп элементы */
-        .desktop-only { display:flex; }
-        .mobile-only  { display:none; }
-        .mobile-menu-wrap { display:none; }
+        /* Bottom nav */
+        .bottom-nav { display:none; }
 
-        /* Mobile */
         @media (max-width:768px) {
-          .desktop-only { display:none !important; }
-          .mobile-only  { display:flex !important; }
-          .mobile-menu-wrap { display:block; }
-          .main-pad { padding:14px !important; }
+          .desktop-nav { display:none !important; }
+          .desktop-search { display:none !important; }
+          .mobile-search { display:flex !important; }
+          .bottom-nav { display:flex !important; }
+          .main-pad { padding:12px !important; }
           .catalog-grid { grid-template-columns:1fr 1fr !important; gap:10px !important; }
           .my-grid { grid-template-columns:1fr !important; }
-          .tabs-row { flex-wrap:wrap; gap:8px; }
         }
+        .mobile-search { display:none; }
       `}</style>
 
-      {/* ── NAV ── */}
-      <div style={{background:'linear-gradient(135deg,#46178f,#5b21b6)', padding:'12px 20px', display:'flex', justifyContent:'space-between', alignItems:'center', position:'relative', zIndex:300, boxShadow:'0 2px 16px rgba(70,23,143,0.3)'}}>
-        
-        {/* Logo */}
-        <div style={{display:'flex', alignItems:'center', gap:10, flexShrink:0}}>
-          <span style={{fontSize:22}}>🎯</span>
-          <span style={{fontWeight:800, fontSize:17, color:'white'}}>QuizApp</span>
-        </div>
-
-        {/* Desktop: search + PIN */}
-        <div className="desktop-only" style={{gap:10, flex:1, maxWidth:540, margin:'0 20px'}}>
-          <div style={{flex:1, background:'white', borderRadius:12, display:'flex', alignItems:'center', paddingLeft:12, gap:8}}>
-            <span style={{fontSize:14, color:'#9ca3af'}}>🔍</span>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Найти опрос..."
-              style={{flex:1, border:'none', outline:'none', fontSize:13, color:'#374151', padding:'11px 0', background:'transparent', fontFamily:"'Unbounded',system-ui,sans-serif"}}/>
+      {/* ── TOP NAV ── */}
+      <div style={{background:'linear-gradient(135deg,#46178f,#5b21b6)', boxShadow:'0 2px 16px rgba(70,23,143,0.3)'}}>
+        {/* Row 1: Logo + Desktop controls */}
+        <div style={{padding:'12px 24px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+          <div style={{display:'flex', alignItems:'center', gap:10, flexShrink:0}}>
+            <span style={{fontSize:22}}>🎯</span>
+            <span style={{fontWeight:800, fontSize:17, color:'white'}}>QuizApp</span>
           </div>
-          <input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="PIN"
-            style={{width:80, background:'white', border:'none', borderRadius:12, padding:'11px 10px', fontSize:13, outline:'none', textAlign:'center', fontWeight:800, color:'#374151', letterSpacing:2, fontFamily:"'Unbounded',system-ui,sans-serif"}}/>
-          <button onClick={enterByCode} className="action-btn"
-            style={{background:'#ffa602', color:'white', border:'none', borderRadius:12, padding:'11px 16px', fontWeight:800, fontSize:13, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif", flexShrink:0}}>
-            Войти
-          </button>
-        </div>
 
-        {/* Desktop: user buttons */}
-        <div className="desktop-only" style={{alignItems:'center', gap:8, flexShrink:0}}>
-          <button className="action-btn" onClick={() => navigate('/leaderboard')}
-            style={{color:'white', background:'transparent', border:'none', borderRadius:10, padding:'7px 10px', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
-            🏆 Рейтинг
-          </button>
-          <button className="action-btn" onClick={() => navigate('/profile')}
-            style={{color:'white', background:'transparent', border:'none', borderRadius:10, padding:'7px 10px', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:8, fontFamily:"'Unbounded',system-ui,sans-serif"}}>
-            {avatar}
-            <span style={{maxWidth:90, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
-              {user.displayName?.split(' ')[0] || user.email}
-            </span>
-          </button>
-          <button className="action-btn" onClick={() => { auth.signOut(); toast.success('Вы вышли'); navigate('/login') }}
-            style={{background:'rgba(255,255,255,0.15)', color:'white', border:'1px solid rgba(255,255,255,0.3)', borderRadius:10, padding:'7px 14px', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
-            Выйти
-          </button>
-        </div>
-
-        {/* Mobile: hamburger */}
-        <button className="mobile-only" onClick={() => setMenuOpen(!menuOpen)}
-          style={{background:'transparent', border:'none', color:'white', fontSize:26, cursor:'pointer', alignItems:'center', justifyContent:'center', padding:'4px 8px'}}>
-          {menuOpen ? '✕' : '☰'}
-        </button>
-      </div>
-
-      {/* Mobile dropdown */}
-      <div className="mobile-menu-wrap" style={{
-        background:'linear-gradient(135deg,#3b0d8f,#4c1a9e)',
-        overflow:'hidden',
-        maxHeight: menuOpen ? '300px' : '0px',
-        transition:'max-height 0.3s ease',
-        position:'relative', zIndex:200,
-      }}>
-        <div style={{padding:'14px 16px', display:'flex', flexDirection:'column', gap:10}}>
-          {/* Search */}
-          <div style={{background:'white', borderRadius:12, display:'flex', alignItems:'center', paddingLeft:12, gap:8}}>
-            <span style={{color:'#9ca3af', fontSize:14}}>🔍</span>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Найти опрос..."
-              style={{flex:1, border:'none', outline:'none', fontSize:13, color:'#374151', padding:'11px 0', background:'transparent', fontFamily:"'Unbounded',system-ui,sans-serif"}}/>
-          </div>
-          {/* PIN */}
-          <div style={{display:'flex', gap:8}}>
-            <input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="Введи PIN код"
-              style={{flex:1, background:'white', border:'none', borderRadius:12, padding:'11px 14px', fontSize:13, outline:'none', textAlign:'center', fontWeight:800, color:'#374151', letterSpacing:2, fontFamily:"'Unbounded',system-ui,sans-serif"}}/>
-            <button onClick={() => { enterByCode(); setMenuOpen(false) }}
-              style={{background:'#ffa602', color:'white', border:'none', borderRadius:12, padding:'11px 18px', fontWeight:800, fontSize:13, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
+          {/* Desktop search */}
+          <div className="desktop-search" style={{display:'flex', gap:10, flex:1, maxWidth:540, margin:'0 20px'}}>
+            <div style={{flex:1, background:'white', borderRadius:12, display:'flex', alignItems:'center', paddingLeft:12, gap:8}}>
+              <span style={{fontSize:14, color:'#9ca3af'}}>🔍</span>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Найти опрос..."
+                style={{flex:1, border:'none', outline:'none', fontSize:13, color:'#374151', padding:'11px 0', background:'transparent', fontFamily:"'Unbounded',system-ui,sans-serif"}}/>
+            </div>
+            <input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="PIN"
+              style={{width:80, background:'white', border:'none', borderRadius:12, padding:'11px 10px', fontSize:13, outline:'none', textAlign:'center', fontWeight:800, color:'#374151', letterSpacing:2, fontFamily:"'Unbounded',system-ui,sans-serif"}}/>
+            <button onClick={enterByCode} className="action-btn"
+              style={{background:'#ffa602', color:'white', border:'none', borderRadius:12, padding:'11px 16px', fontWeight:800, fontSize:13, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
               Войти
             </button>
           </div>
-          {/* Links */}
-          <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
-            <button onClick={() => { navigate('/leaderboard'); setMenuOpen(false) }}
-              style={{color:'white', background:'rgba(255,255,255,0.15)', border:'none', borderRadius:10, padding:'9px 14px', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
+
+          {/* Desktop user */}
+          <div className="desktop-nav" style={{display:'flex', alignItems:'center', gap:8, flexShrink:0}}>
+            <button className="action-btn" onClick={() => navigate('/leaderboard')}
+              style={{color:'white', background:'transparent', border:'none', borderRadius:10, padding:'7px 10px', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
               🏆 Рейтинг
             </button>
-            <button onClick={() => { navigate('/profile'); setMenuOpen(false) }}
-              style={{color:'white', background:'rgba(255,255,255,0.15)', border:'none', borderRadius:10, padding:'9px 14px', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:8, fontFamily:"'Unbounded',system-ui,sans-serif"}}>
-              {avatar} {user.displayName?.split(' ')[0] || 'Профиль'}
+            <button className="action-btn" onClick={() => navigate('/profile')}
+              style={{color:'white', background:'transparent', border:'none', borderRadius:10, padding:'7px 10px', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:8, fontFamily:"'Unbounded',system-ui,sans-serif"}}>
+              {avatar}
+              <span style={{maxWidth:90, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                {user.displayName?.split(' ')[0] || user.email}
+              </span>
             </button>
-            <button onClick={() => { auth.signOut(); toast.success('Вы вышли'); navigate('/login') }}
-              style={{color:'white', background:'rgba(255,255,255,0.15)', border:'none', borderRadius:10, padding:'9px 14px', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
+            <button className="action-btn" onClick={() => { auth.signOut(); toast.success('Вы вышли'); navigate('/login') }}
+              style={{background:'rgba(255,255,255,0.15)', color:'white', border:'1px solid rgba(255,255,255,0.3)', borderRadius:10, padding:'7px 14px', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
               Выйти
             </button>
           </div>
+        </div>
+
+        {/* Mobile search row */}
+        <div className="mobile-search" style={{padding:'0 14px 12px', gap:8}}>
+          <div style={{flex:1, background:'white', borderRadius:10, display:'flex', alignItems:'center', paddingLeft:10, gap:6}}>
+            <span style={{color:'#9ca3af', fontSize:14}}>🔍</span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Найти опрос..."
+              style={{flex:1, border:'none', outline:'none', fontSize:12, color:'#374151', padding:'10px 0', background:'transparent', fontFamily:"'Unbounded',system-ui,sans-serif"}}/>
+          </div>
+          <input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="PIN"
+            style={{width:70, background:'white', border:'none', borderRadius:10, padding:'10px 8px', fontSize:12, outline:'none', textAlign:'center', fontWeight:800, color:'#374151', letterSpacing:2, fontFamily:"'Unbounded',system-ui,sans-serif"}}/>
+          <button onClick={enterByCode}
+            style={{background:'#ffa602', color:'white', border:'none', borderRadius:10, padding:'10px 14px', fontWeight:800, fontSize:12, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
+            GO
+          </button>
         </div>
       </div>
 
@@ -185,7 +150,7 @@ export default function Dashboard() {
       <div className="main-pad" style={{maxWidth:1200, margin:'0 auto', padding:'24px 28px'}}>
 
         {/* Tabs + Create */}
-        <div className="tabs-row" style={{display:'flex', alignItems:'center', marginBottom:20, gap:8}}>
+        <div style={{display:'flex', alignItems:'center', marginBottom:20, gap:8, flexWrap:'wrap'}}>
           {[['discover','Каталог'],['my',`Мои${myQuizzes.length > 0 ? ' ('+myQuizzes.length+')' : ''}`]].map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}
               style={{padding:'10px 18px', borderRadius:12, border:'none', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif", transition:'all 0.15s',
@@ -197,8 +162,7 @@ export default function Dashboard() {
           ))}
           <button className="action-btn" onClick={() => navigate('/create')}
             style={{marginLeft:'auto', background:'linear-gradient(135deg,#7c3aed,#4f46e5)', color:'white', border:'none', borderRadius:12, padding:'10px 18px', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:"'Unbounded',system-ui,sans-serif", display:'flex', alignItems:'center', gap:6, boxShadow:'0 4px 12px rgba(124,58,237,0.3)', flexShrink:0}}>
-            <span style={{display:'none'}} className="hide-mobile">+ Создать опрос</span>
-            <span>+</span>
+            + Создать опрос
           </button>
         </div>
 
@@ -304,8 +268,67 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* Desktop footer */}
       <div style={{textAlign:'center', padding:'16px', fontSize:11, color:'#d1d5db', borderTop:'1px solid #f3f4f6'}}>
         © 2026 QuizApp — Дипломный проект
+      </div>
+
+      {/* ── BOTTOM NAV (mobile only) ── */}
+      <div className="bottom-nav" style={{
+        position:'fixed', bottom:0, left:0, right:0,
+        background:'white', borderTop:'1px solid #e5e7eb',
+        display:'none', justifyContent:'space-around', alignItems:'center',
+        padding:'8px 0 12px', zIndex:500,
+        boxShadow:'0 -4px 20px rgba(0,0,0,0.08)'
+      }}>
+        {/* Каталог */}
+        <button onClick={() => setTab('discover')}
+          style={{display:'flex', flexDirection:'column', alignItems:'center', gap:3, background:'transparent', border:'none', cursor:'pointer', padding:'4px 12px',
+            color: tab === 'discover' ? '#7c3aed' : '#9ca3af'}}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+          </svg>
+          <span style={{fontSize:10, fontWeight: tab === 'discover' ? 700 : 400, fontFamily:"'Unbounded',system-ui,sans-serif"}}>Каталог</span>
+        </button>
+
+        {/* Мои опросы */}
+        <button onClick={() => setTab('my')}
+          style={{display:'flex', flexDirection:'column', alignItems:'center', gap:3, background:'transparent', border:'none', cursor:'pointer', padding:'4px 12px',
+            color: tab === 'my' ? '#7c3aed' : '#9ca3af'}}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <span style={{fontSize:10, fontWeight: tab === 'my' ? 700 : 400, fontFamily:"'Unbounded',system-ui,sans-serif"}}>Мои</span>
+        </button>
+
+        {/* + Создать (центр) */}
+        <button onClick={() => navigate('/create')}
+          style={{display:'flex', flexDirection:'column', alignItems:'center', gap:3, background:'transparent', border:'none', cursor:'pointer', padding:'4px 12px'}}>
+          <div style={{width:44, height:44, borderRadius:'50%', background:'linear-gradient(135deg,#7c3aed,#4f46e5)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:22, fontWeight:700, marginTop:-16, boxShadow:'0 4px 16px rgba(124,58,237,0.4)'}}>
+            +
+          </div>
+        </button>
+
+        {/* Рейтинг */}
+        <button onClick={() => navigate('/leaderboard')}
+          style={{display:'flex', flexDirection:'column', alignItems:'center', gap:3, background:'transparent', border:'none', cursor:'pointer', padding:'4px 12px', color:'#9ca3af'}}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="18 20 18 10"/><polyline points="12 20 12 4"/><polyline points="6 20 6 14"/>
+          </svg>
+          <span style={{fontSize:10, fontFamily:"'Unbounded',system-ui,sans-serif"}}>Рейтинг</span>
+        </button>
+
+        {/* Профиль */}
+        <button onClick={() => navigate('/profile')}
+          style={{display:'flex', flexDirection:'column', alignItems:'center', gap:3, background:'transparent', border:'none', cursor:'pointer', padding:'4px 12px', color:'#9ca3af'}}>
+          {user.photoURL
+            ? <img src={user.photoURL} style={{width:26, height:26, borderRadius:'50%', objectFit:'cover'}} alt=""/>
+            : <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+          }
+          <span style={{fontSize:10, fontFamily:"'Unbounded',system-ui,sans-serif"}}>Профиль</span>
+        </button>
       </div>
     </div>
   )
