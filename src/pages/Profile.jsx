@@ -12,12 +12,15 @@ const BADGES = [
   { id: 'streak',  icon: '⚡', label: 'Стремительный',   desc: 'Набери 50+ очков за раз',   req: (_,p)    => p >= 50  },
 ]
 
+const TYPE_ICONS = { quiz:'🎮', test:'📝', survey:'📊', work:'💼' }
+
 export default function Profile() {
   const navigate = useNavigate()
-  const [user,       setUser]       = useState(null)
-  const [stats,      setStats]      = useState({ count:0, score:0, best:0 })
-  const [history,    setHistory]    = useState([])
-  const [selected,   setSelected]   = useState(null) // выбранное прохождение
+  const [user,        setUser]        = useState(null)
+  const [stats,       setStats]       = useState({ count:0, score:0, best:0 })
+  const [quizGroups,  setQuizGroups]  = useState([]) // сгруппированные по опросу
+  const [expandedQuiz,setExpandedQuiz]= useState(null) // открытый опрос
+  const [selectedRun, setSelectedRun] = useState(null) // выбранное прохождение
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async u => {
@@ -26,7 +29,8 @@ export default function Profile() {
       const snap = await getDocs(collection(db, 'quizzes'))
       const quizzes = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       let count = 0, score = 0, best = 0
-      const hist = []
+      const groups = {}
+
       quizzes.forEach(q => {
         ;(q.responses || []).forEach(r => {
           if (r.userId === u.uid) {
@@ -34,21 +38,36 @@ export default function Profile() {
             score += r.score
             const pct = Math.round((r.answers?.filter(a => a.isCorrect).length || 0) / q.questions.length * 100)
             if (pct > best) best = pct
-            hist.push({
-              title:     q.title,
-              questions: q.questions,
-              answers:   r.answers,
-              score:     r.score,
-              percent:   pct,
-              date:      r.date,
-              type:      q.type,
+
+            if (!groups[q.id]) {
+              groups[q.id] = {
+                id:        q.id,
+                title:     q.title,
+                type:      q.type,
+                questions: q.questions,
+                runs:      [],
+              }
+            }
+            groups[q.id].runs.push({
+              score, percent: pct, date: r.date,
+              answers: r.answers, score: r.score,
             })
           }
         })
       })
-      hist.sort((a, b) => new Date(b.date) - new Date(a.date))
+
+      // sort runs inside each group
+      Object.values(groups).forEach(g => {
+        g.runs.sort((a, b) => new Date(b.date) - new Date(a.date))
+      })
+
+      // sort groups by latest run
+      const sorted = Object.values(groups).sort((a, b) =>
+        new Date(b.runs[0]?.date) - new Date(a.runs[0]?.date)
+      )
+
       setStats({ count, score, best })
-      setHistory(hist)
+      setQuizGroups(sorted)
     })
     return () => unsub()
   }, [])
@@ -60,8 +79,6 @@ export default function Profile() {
   const xpCurr = stats.score % 50
   const xpPct  = (xpCurr / 50) * 100
 
-  const TYPE_ICONS = { quiz:'🎮', test:'📝', survey:'📊', work:'💼' }
-
   return (
     <div style={{minHeight:'100vh', background:'#f8f7ff', fontFamily:"'Unbounded',system-ui,sans-serif"}}>
       <style>{`
@@ -69,24 +86,22 @@ export default function Profile() {
         .badge-card.earned { background:#fffbeb; border:1.5px solid #fcd34d; }
         .badge-card.earned:hover { transform:translateY(-4px); }
         .badge-card.locked { background:#f9fafb; border:1.5px solid #f3f4f6; opacity:0.4; }
-        .timeline-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; margin-top:4px; }
-        .timeline-line { width:1px; background:#e5e7eb; flex:1; margin:4px 0; }
-        .hist-item { cursor:pointer; transition:background 0.15s; border-radius:12px; padding:10px 12px; }
-        .hist-item:hover { background:#f5f3ff; }
+        .quiz-group { border-radius:14px; border:1.5px solid #e5e7eb; overflow:hidden; margin-bottom:10px; background:white; transition:border-color 0.15s; }
+        .quiz-group.open { border-color:#7c3aed; }
+        .quiz-group-header { display:flex; align-items:center; gap:12px; padding:14px 16px; cursor:pointer; transition:background 0.15s; }
+        .quiz-group-header:hover { background:#f8f7ff; }
+        .run-row { display:flex; align-items:center; padding:12px 16px; border-top:1px solid #f3f4f6; cursor:pointer; transition:background 0.15s; gap:12px; }
+        .run-row:hover { background:#f5f3ff; }
         .answer-row { display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid #f3f4f6; }
         .answer-row:last-child { border-bottom:none; }
         .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; display:flex; align-items:flex-end; justify-content:center; }
-        .modal-sheet { background:white; border-radius:24px 24px 0 0; width:100%; max-width:600px; max-height:85vh; overflow-y:auto; padding:24px 20px; }
+        .modal-sheet { background:white; border-radius:24px 24px 0 0; width:100%; max-width:600px; max-height:88vh; overflow-y:auto; padding:24px 20px 32px; }
 
         @media (max-width:768px) {
           .profile-pad { padding:14px !important; }
           .header-pad { padding:12px 16px !important; }
           .stats-grid { grid-template-columns:repeat(3,1fr) !important; gap:10px !important; }
           .badges-grid { grid-template-columns:repeat(3,1fr) !important; gap:8px !important; }
-          .profile-card { padding:20px 16px !important; }
-          .profile-card-top { height:60px !important; }
-          .profile-avatar { width:64px !important; height:64px !important; margin-top:10px !important; }
-          .profile-name { font-size:15px !important; }
         }
       `}</style>
 
@@ -102,26 +117,26 @@ export default function Profile() {
       <div className="profile-pad" style={{maxWidth:800, margin:'0 auto', padding:'20px 20px'}}>
 
         {/* Profile card */}
-        <div className="profile-card" style={{background:'white', borderRadius:22, border:'1.5px solid #e5e7eb', padding:28, marginBottom:16, textAlign:'center', position:'relative', overflow:'hidden'}}>
-          <div className="profile-card-top" style={{position:'absolute', top:0, left:0, right:0, height:70, background:'linear-gradient(135deg,#7c3aed,#4f46e5)'}} />
+        <div style={{background:'white', borderRadius:22, border:'1.5px solid #e5e7eb', padding:24, marginBottom:16, textAlign:'center', position:'relative', overflow:'hidden'}}>
+          <div style={{position:'absolute', top:0, left:0, right:0, height:65, background:'linear-gradient(135deg,#7c3aed,#4f46e5)'}}/>
           <div style={{position:'relative', zIndex:1, marginBottom:10}}>
             {user.photoURL ? (
-              <img className="profile-avatar" src={user.photoURL} style={{width:72, height:72, borderRadius:'50%', border:'4px solid white', objectFit:'cover', display:'block', margin:'12px auto 0'}} alt=""/>
+              <img src={user.photoURL} style={{width:68, height:68, borderRadius:'50%', border:'4px solid white', objectFit:'cover', display:'block', margin:'10px auto 0'}} alt=""/>
             ) : (
-              <div className="profile-avatar" style={{width:72, height:72, borderRadius:'50%', border:'4px solid white', background:'linear-gradient(135deg,#7c3aed,#4f46e5)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:900, fontSize:26, margin:'12px auto 0'}}>
+              <div style={{width:68, height:68, borderRadius:'50%', border:'4px solid white', background:'linear-gradient(135deg,#7c3aed,#4f46e5)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:900, fontSize:24, margin:'10px auto 0'}}>
                 {(user.displayName||user.email||'U')[0].toUpperCase()}
               </div>
             )}
           </div>
-          <h2 className="profile-name" style={{fontSize:17, fontWeight:900, color:'#111', margin:'10px 0 4px'}}>{user.displayName || 'Пользователь'}</h2>
-          <p style={{fontSize:11, color:'#9ca3af', margin:'0 0 14px'}}>{user.email}</p>
-          <div style={{display:'inline-flex', alignItems:'center', gap:8, background:'#f5f3ff', color:'#7c3aed', padding:'7px 18px', borderRadius:100, fontSize:12, fontWeight:800, marginBottom:14}}>
+          <h2 style={{fontSize:16, fontWeight:900, color:'#111', margin:'10px 0 3px'}}>{user.displayName || 'Пользователь'}</h2>
+          <p style={{fontSize:11, color:'#9ca3af', margin:'0 0 12px'}}>{user.email}</p>
+          <div style={{display:'inline-flex', alignItems:'center', gap:6, background:'#f5f3ff', color:'#7c3aed', padding:'6px 16px', borderRadius:100, fontSize:12, fontWeight:800, marginBottom:12}}>
             ⚡ Уровень {level}
           </div>
           <div style={{maxWidth:300, margin:'0 auto'}}>
-            <div style={{display:'flex', justifyContent:'space-between', fontSize:11, color:'#9ca3af', marginBottom:5}}>
+            <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'#9ca3af', marginBottom:5}}>
               <span>{xpCurr} XP</span>
-              <span>до уровня {level+1}: {50 - xpCurr} XP</span>
+              <span>до уровня {level+1}: {50-xpCurr} XP</span>
             </div>
             <div style={{height:7, background:'#f3f4f6', borderRadius:8, overflow:'hidden'}}>
               <div style={{height:'100%', width:`${xpPct}%`, background:'linear-gradient(90deg,#7c3aed,#4f46e5)', borderRadius:8}}/>
@@ -130,34 +145,34 @@ export default function Profile() {
         </div>
 
         {/* Stats */}
-        <div className="stats-grid" style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14, marginBottom:16}}>
+        <div className="stats-grid" style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:16}}>
           {[
-            { label:'Пройдено', value: stats.count, color:'#7c3aed', bg:'#f5f3ff', icon:'🎮' },
-            { label:'Очков',    value: stats.score, color:'#d97706', bg:'#fffbeb', icon:'💰' },
-            { label:'Лучший',   value: `${stats.best}%`, color:'#059669', bg:'#ecfdf5', icon:'🏆' },
+            { label:'Пройдено', value: stats.count,       color:'#7c3aed', bg:'#f5f3ff', icon:'🎮' },
+            { label:'Очков',    value: stats.score,       color:'#d97706', bg:'#fffbeb', icon:'💰' },
+            { label:'Лучший',   value: `${stats.best}%`,  color:'#059669', bg:'#ecfdf5', icon:'🏆' },
           ].map((s, i) => (
-            <div key={i} style={{background:s.bg, borderRadius:16, padding:'16px 10px', textAlign:'center'}}>
-              <div style={{fontSize:24, marginBottom:6}}>{s.icon}</div>
-              <div style={{fontSize:22, fontWeight:900, color:s.color}}>{s.value}</div>
+            <div key={i} style={{background:s.bg, borderRadius:14, padding:'14px 8px', textAlign:'center'}}>
+              <div style={{fontSize:22, marginBottom:5}}>{s.icon}</div>
+              <div style={{fontSize:20, fontWeight:900, color:s.color}}>{s.value}</div>
               <div style={{fontSize:10, color:'#6b7280', marginTop:3}}>{s.label}</div>
             </div>
           ))}
         </div>
 
         {/* Badges */}
-        <div style={{background:'white', borderRadius:18, border:'1.5px solid #e5e7eb', padding:18, marginBottom:16}}>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14}}>
+        <div style={{background:'white', borderRadius:18, border:'1.5px solid #e5e7eb', padding:16, marginBottom:16}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
             <h3 style={{fontSize:13, fontWeight:800, color:'#111', margin:0}}>Значки и достижения</h3>
-            <span style={{fontSize:11, color:'#9ca3af', fontWeight:700}}>{earnedBadges.length}/{BADGES.length} получено</span>
+            <span style={{fontSize:10, color:'#9ca3af', fontWeight:700}}>{earnedBadges.length}/{BADGES.length}</span>
           </div>
-          <div className="badges-grid" style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+          <div className="badges-grid" style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8}}>
             {BADGES.map(b => {
               const earned = b.req(stats.count, stats.best, stats.score)
               return (
-                <div key={b.id} className={`badge-card ${earned ? 'earned' : 'locked'}`}>
-                  <div style={{fontSize:28, marginBottom:6}}>{b.icon}</div>
+                <div key={b.id} className={`badge-card ${earned?'earned':'locked'}`}>
+                  <div style={{fontSize:26, marginBottom:5}}>{b.icon}</div>
                   <div style={{fontSize:10, fontWeight:800, color:'#374151'}}>{b.label}</div>
-                  <div style={{fontSize:9, color:'#9ca3af', marginTop:3}}>{b.desc}</div>
+                  <div style={{fontSize:9, color:'#9ca3af', marginTop:2}}>{b.desc}</div>
                   {earned && <div style={{fontSize:9, color:'#d97706', fontWeight:800, marginTop:4}}>✓ Получено</div>}
                 </div>
               )
@@ -165,71 +180,84 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Timeline history */}
-        <div style={{background:'white', borderRadius:18, border:'1.5px solid #e5e7eb', padding:18}}>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
+        {/* Quiz groups */}
+        <div style={{background:'white', borderRadius:18, border:'1.5px solid #e5e7eb', padding:16}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14}}>
             <h3 style={{fontSize:13, fontWeight:800, color:'#111', margin:0}}>История прохождений</h3>
-            <span style={{fontSize:11, color:'#9ca3af'}}>{history.length} всего</span>
+            <span style={{fontSize:10, color:'#9ca3af'}}>{quizGroups.length} опросов</span>
           </div>
 
-          {history.length === 0 ? (
+          {quizGroups.length === 0 ? (
             <div style={{textAlign:'center', padding:'40px 0', color:'#9ca3af'}}>
               <div style={{fontSize:36, marginBottom:10}}>📝</div>
               <p style={{fontSize:12, fontWeight:700}}>Ты ещё не проходил опросы</p>
             </div>
           ) : (
-            <div style={{display:'flex', flexDirection:'column'}}>
-              {history.map((h, i) => (
-                <div key={i} style={{display:'flex', gap:12}}>
-                  {/* Timeline */}
-                  <div style={{display:'flex', flexDirection:'column', alignItems:'center', width:20, flexShrink:0}}>
-                    <div className="timeline-dot" style={{background: h.percent >= 70 ? '#7c3aed' : h.percent >= 40 ? '#d97706' : '#d1d5db'}}/>
-                    {i < history.length - 1 && <div className="timeline-line"/>}
+            quizGroups.map(group => {
+              const isOpen = expandedQuiz === group.id
+              const bestRun = Math.max(...group.runs.map(r => r.percent))
+              return (
+                <div key={group.id} className={`quiz-group ${isOpen ? 'open' : ''}`}>
+                  {/* Group header */}
+                  <div className="quiz-group-header" onClick={() => setExpandedQuiz(isOpen ? null : group.id)}>
+                    <div style={{width:40, height:40, borderRadius:12, background:'#f5f3ff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0}}>
+                      {TYPE_ICONS[group.type] || '❓'}
+                    </div>
+                    <div style={{flex:1, minWidth:0}}>
+                      <div style={{fontSize:12, fontWeight:800, color:'#111', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{group.title}</div>
+                      <div style={{fontSize:10, color:'#9ca3af', marginTop:2}}>
+                        {group.runs.length} прохождений · лучший {bestRun}%
+                      </div>
+                    </div>
+                    <div style={{display:'flex', alignItems:'center', gap:8, flexShrink:0}}>
+                      <span style={{fontSize:11, color:'#7c3aed', fontWeight:700}}>{group.runs.length}x</span>
+                      <span style={{fontSize:14, color:'#9ca3af', transition:'transform 0.2s', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)'}}>›</span>
+                    </div>
                   </div>
 
-                  {/* Content */}
-                  <div className="hist-item" style={{flex:1, marginBottom: i < history.length-1 ? 4 : 0}}
-                    onClick={() => setSelected(h)}>
-                    <div style={{fontSize:10, color:'#9ca3af', marginBottom:3}}>
-                      {new Date(h.date).toLocaleDateString('ru-RU')}
-                    </div>
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', gap:8}}>
-                      <div style={{display:'flex', alignItems:'center', gap:8, minWidth:0}}>
-                        <span style={{fontSize:16, flexShrink:0}}>{TYPE_ICONS[h.type] || '❓'}</span>
-                        <span style={{fontSize:12, fontWeight:700, color:'#111', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{h.title}</span>
+                  {/* Runs list */}
+                  {isOpen && group.runs.map((run, i) => (
+                    <div key={i} className="run-row" onClick={() => setSelectedRun({...run, title: group.title, questions: group.questions})}>
+                      <div style={{width:8, height:8, borderRadius:'50%', flexShrink:0,
+                        background: run.percent>=70?'#7c3aed':run.percent>=40?'#d97706':'#d1d5db'}}/>
+                      <div style={{flex:1, minWidth:0}}>
+                        <div style={{fontSize:11, color:'#374151', fontWeight:600}}>
+                          {new Date(run.date).toLocaleDateString('ru-RU')} · {new Date(run.date).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})}
+                        </div>
+                        <div style={{fontSize:10, color:'#9ca3af', marginTop:2}}>
+                          {run.answers?.filter(a => a.isCorrect).length || 0} из {group.questions?.length || 0} правильно
+                        </div>
                       </div>
                       <div style={{display:'flex', alignItems:'center', gap:8, flexShrink:0}}>
-                        <span style={{fontSize:12, fontWeight:800, color:'#7c3aed'}}>{h.score} оч.</span>
+                        <span style={{fontSize:12, fontWeight:800, color:'#7c3aed'}}>{run.score} оч.</span>
                         <span style={{padding:'3px 10px', borderRadius:8, fontSize:11, fontWeight:800,
-                          background: h.percent>=70?'#ecfdf5':h.percent>=40?'#fffbeb':'#fef2f2',
-                          color: h.percent>=70?'#059669':h.percent>=40?'#d97706':'#ef4444'}}>
-                          {h.percent}%
+                          background: run.percent>=70?'#ecfdf5':run.percent>=40?'#fffbeb':'#fef2f2',
+                          color: run.percent>=70?'#059669':run.percent>=40?'#d97706':'#ef4444'}}>
+                          {run.percent}%
                         </span>
                         <span style={{fontSize:11, color:'#9ca3af'}}>›</span>
                       </div>
                     </div>
-                    <div style={{fontSize:10, color:'#9ca3af', marginTop:3}}>
-                      {h.answers?.filter(a => a.isCorrect).length || 0} из {h.questions?.length || 0} правильно · нажми для деталей
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )
+            })
           )}
         </div>
       </div>
 
       {/* Detail modal */}
-      {selected && (
-        <div className="modal-overlay" onClick={() => setSelected(null)}>
+      {selectedRun && (
+        <div className="modal-overlay" onClick={() => setSelectedRun(null)}>
           <div className="modal-sheet" onClick={e => e.stopPropagation()}>
-            {/* Modal header */}
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
               <div>
-                <h3 style={{fontSize:14, fontWeight:800, color:'#111', margin:0}}>{selected.title}</h3>
-                <p style={{fontSize:11, color:'#9ca3af', margin:'4px 0 0'}}>{new Date(selected.date).toLocaleDateString('ru-RU')}</p>
+                <h3 style={{fontSize:14, fontWeight:800, color:'#111', margin:0}}>{selectedRun.title}</h3>
+                <p style={{fontSize:11, color:'#9ca3af', margin:'4px 0 0'}}>
+                  {new Date(selectedRun.date).toLocaleDateString('ru-RU')} · {new Date(selectedRun.date).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})}
+                </p>
               </div>
-              <button onClick={() => setSelected(null)}
+              <button onClick={() => setSelectedRun(null)}
                 style={{background:'#f3f4f6', border:'none', borderRadius:10, width:32, height:32, fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>
                 ✕
               </button>
@@ -238,62 +266,57 @@ export default function Profile() {
             {/* Stats */}
             <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:20}}>
               {[
-                { label:'Очков',      value: selected.score,   color:'#7c3aed', bg:'#f5f3ff' },
-                { label:'Правильно',  value: `${selected.answers?.filter(a=>a.isCorrect).length||0}/${selected.questions?.length||0}`, color:'#059669', bg:'#ecfdf5' },
-                { label:'Результат',  value: `${selected.percent}%`, color: selected.percent>=70?'#059669':selected.percent>=40?'#d97706':'#ef4444', bg: selected.percent>=70?'#ecfdf5':selected.percent>=40?'#fffbeb':'#fef2f2' },
+                { label:'Очков',     value: selectedRun.score,   color:'#7c3aed', bg:'#f5f3ff' },
+                { label:'Правильно', value: `${selectedRun.answers?.filter(a=>a.isCorrect).length||0}/${selectedRun.questions?.length||0}`, color:'#059669', bg:'#ecfdf5' },
+                { label:'Результат', value: `${selectedRun.percent}%`, color: selectedRun.percent>=70?'#059669':selectedRun.percent>=40?'#d97706':'#ef4444', bg: selectedRun.percent>=70?'#ecfdf5':selectedRun.percent>=40?'#fffbeb':'#fef2f2' },
               ].map((s, i) => (
                 <div key={i} style={{background:s.bg, borderRadius:12, padding:'12px 8px', textAlign:'center'}}>
-                  <div style={{fontSize:18, fontWeight:900, color:s.color}}>{s.value}</div>
+                  <div style={{fontSize:17, fontWeight:900, color:s.color}}>{s.value}</div>
                   <div style={{fontSize:10, color:'#6b7280', marginTop:3}}>{s.label}</div>
                 </div>
               ))}
             </div>
 
-            {/* Answers detail */}
-            <h4 style={{fontSize:12, fontWeight:800, color:'#111', marginBottom:12}}>Детали ответов</h4>
-            <div style={{display:'flex', flexDirection:'column'}}>
-              {selected.questions?.map((q, i) => {
-                const ans = selected.answers?.[i]
-                const isCorrect = ans?.isCorrect
-                const isPartial = ans?.isPartial
-                const selectedArr = Array.isArray(ans?.selected) ? ans.selected : ans?.selected !== undefined ? [ans.selected] : []
-                const correctArr  = Array.isArray(q.correct) ? q.correct : [q.correct]
+            <h4 style={{fontSize:12, fontWeight:800, color:'#111', marginBottom:12}}>Ответы по вопросам</h4>
+            {selectedRun.questions?.map((q, i) => {
+              const ans = selectedRun.answers?.[i]
+              const isCorrect = ans?.isCorrect
+              const isPartial = ans?.isPartial
+              const selectedArr = Array.isArray(ans?.selected) ? ans.selected : ans?.selected !== undefined ? [ans.selected] : []
+              const correctArr  = Array.isArray(q.correct) ? q.correct : [q.correct]
 
-                return (
-                  <div key={i} className="answer-row">
-                    <div style={{width:24, height:24, borderRadius:'50%', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800,
-                      background: isCorrect ? '#ecfdf5' : isPartial ? '#fffbeb' : '#fef2f2',
-                      color: isCorrect ? '#059669' : isPartial ? '#d97706' : '#ef4444'}}>
-                      {isCorrect ? '✓' : isPartial ? '½' : '✗'}
-                    </div>
-                    <div style={{flex:1, minWidth:0}}>
-                      <div style={{fontSize:12, fontWeight:700, color:'#374151', marginBottom:6, wordBreak:'break-word'}}>{q.text}</div>
-                      <div style={{display:'flex', flexWrap:'wrap', gap:5}}>
-                        {q.options?.filter(o => o).map((opt, j) => {
-                          const isSelected = selectedArr.includes(j)
-                          const isRight    = correctArr.includes(j)
-                          let bg = '#f9fafb', color = '#6b7280', border = '#f3f4f6'
-                          if (isRight && isSelected) { bg = '#ecfdf5'; color = '#059669'; border = '#a7f3d0' }
-                          else if (isRight) { bg = '#ecfdf5'; color = '#059669'; border = '#a7f3d0' }
-                          else if (isSelected) { bg = '#fef2f2'; color = '#ef4444'; border = '#fecaca' }
-                          return (
-                            <span key={j} style={{fontSize:10, padding:'3px 10px', borderRadius:8,
-                              background: bg, color: color, border: `1px solid ${border}`, fontWeight: isRight || isSelected ? 700 : 400}}>
-                              {isRight ? '✓ ' : isSelected ? '✗ ' : ''}{opt}
-                            </span>
-                          )
-                        })}
-                      </div>
-                      {ans?.earnedPoints !== undefined && (
-                        <div style={{fontSize:10, color:'#7c3aed', fontWeight:700, marginTop:5}}>
-                          +{ans.earnedPoints} баллов
-                        </div>
-                      )}
-                    </div>
+              return (
+                <div key={i} className="answer-row">
+                  <div style={{width:24, height:24, borderRadius:'50%', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800,
+                    background: isCorrect?'#ecfdf5':isPartial?'#fffbeb':'#fef2f2',
+                    color: isCorrect?'#059669':isPartial?'#d97706':'#ef4444'}}>
+                    {isCorrect?'✓':isPartial?'½':'✗'}
                   </div>
-                )
-              })}
-            </div>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{fontSize:12, fontWeight:700, color:'#374151', marginBottom:6, wordBreak:'break-word'}}>{i+1}. {q.text}</div>
+                    <div style={{display:'flex', flexWrap:'wrap', gap:5}}>
+                      {q.options?.filter(o => o).map((opt, j) => {
+                        const isSel   = selectedArr.includes(j)
+                        const isRight = correctArr.includes(j)
+                        let bg = '#f9fafb', color = '#6b7280', border = 'transparent'
+                        if (isRight && isSel)  { bg='#ecfdf5'; color='#059669'; border='#a7f3d0' }
+                        else if (isRight)       { bg='#ecfdf5'; color='#059669'; border='#a7f3d0' }
+                        else if (isSel)         { bg='#fef2f2'; color='#ef4444'; border='#fecaca' }
+                        return (
+                          <span key={j} style={{fontSize:10, padding:'3px 10px', borderRadius:8,
+                            background:bg, color:color, border:`1px solid ${border}`, fontWeight: isRight||isSel?700:400}}>
+                            {isRight?'✓ ':isSel?'✗ ':''}{opt}
+                          </span>
+                        )
+                      })}
+                    </div>
+                    {ans?.earnedPoints !== undefined && (
+                      <div style={{fontSize:10, color:'#7c3aed', fontWeight:700, marginTop:5}}>+{ans.earnedPoints} баллов</div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
